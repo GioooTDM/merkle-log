@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PA Notary — Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <main class="container">
+    <header style="margin-bottom: 50px;">
+      <h1>MerkeLog <span class="badge">PA Dashboard</span></h1>
+      <p class="subtitle">Sistema centralizzato per la notarizzazione e verifica documentale</p>
+    </header>
+
+    <div class="menu-grid">
+      <a href="notarizza.html" class="menu-card">
+        <div class="icon">✍️</div>
+        <div class="menu-content">
+          <h3>Notarizza Documento</h3>
+          <p>Registra un nuovo documento nel MerkleLog e genera l'impronta crittografica.</p>
+        </div>
+      </a>
+
+      <a href="recover_proof.html" class="menu-card">
+        <div class="icon">🧾</div>
+        <div class="menu-content">
+          <h3>Recupero Proof</h3>
+          <p>Lorem ipsum dolor sit amet, consectetur adipisicing elit.</p>
+        </div>
+      </a>
+
+      <a href="verify.html" class="menu-card">
+        <div class="icon">🔍</div>
+        <div class="menu-content">
+          <h3>Verifica Integrità</h3>
+          <p>Controlla se un documento è autentico incrociando file, evento e proof.</p>
+        </div>
+      </a>
+
+      <a href="consult.html" class="menu-card">
+        <div class="icon">📜</div>
+        <div class="menu-content">
+          <h3>Consulta Registro</h3>
+          <p>Esplora la catena degli eventi e i checkpoint del registro pubblico.</p>
+        </div>
+      </a>
+
+      <a href="/status.html" class="menu-card">
+        <div class="icon">📊</div>
+        <div class="menu-content">
+          <h3>Stato del Log</h3>
+          <p>Visualizza il numero di entry, l'altezza dell'albero e l'ultimo Root Hash.</p>
+        </div>
+      </a>
+
+      <!-- Questo può essere verifica di massa dei doc o recupero consistency proof o ancoraggio su blockchain -->
+      <a href="" class="menu-card">
+        <div class="icon">📈</div>
+        <div class="menu-content">
+          <h3>Lorem</h3>
+          <p>Lorem ipsum dolor sit amet, consectetur adipisicing elit.</p>
+        </div>
+      </a>
+    </div>
+
+    <footer class="home-footer">
+      <p class="muted">Servizio di Trust Crittografico basato su Transparency Dev</p>
+      <div class="status-indicator">
+        <span class="dot"></span> Log Server Online: <code>localhost:2025</code>
+      </div>
+    </footer>
+  </main>
+</body>
+</html>

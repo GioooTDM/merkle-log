@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PA Notary — Verifica Integrità</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <main class="container">
+    <header>
+      <h1>MerkeLog <span class="badge">Verification Tool</span></h1>
+      <p class="subtitle">Verifica l'autenticità e l'integrità dei documenti notarizzati</p>
+    </header>
+
+    <div class="row">
+      <section class="card col">
+  <h3>1. Caricamento Dati</h3>
+  
+  <div class="field-group">
+    <label for="verifyFile">Documento Originale (PDF, ecc.)</label>
+    <input id="verifyFile" type="file" />
+    <p class="muted">Il file verrà processato localmente per calcolare l'hash.</p>
+  </div>
+
+  <div class="field-group">
+    <label for="verifyEvent">Metadati Evento (.json)</label>
+    <input id="verifyEvent" type="file" accept=".json" />
+    <p class="muted">Il JSON generato durante la notarizzazione.</p>
+  </div>
+
+  <div class="field-group">
+    <label for="verifyProof">Proof Crittografica (.json)</label>
+    <input id="verifyProof" type="file" accept=".json" />
+    <p class="muted">La prova di inclusione nel Merkle Log.</p>
+  </div>
+
+  <div class="actions">
+    <button id="btnVerify" class="btn-primary" style="width: 100%;">Esegui Verifica "Offline"</button>
+  </div>
+</section>
+
+      <section class="card col">
+        <h3>2. Esito Verifica</h3>
+        
+        <div id="verifyStatus" class="status-box status-idle">
+          In attesa di file...
+        </div>
+
+        <div class="info-display">
+          <div class="info-row">
+            <span class="info-label">Document ID:</span>
+            <span id="resDocUid" class="info-value">-</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Versione:</span>
+            <span id="resVersion" class="info-value">-</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Data Notarizzazione:</span>
+            <span id="resDate" class="info-value">-</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Log Index:</span>
+            <span id="resIndex" class="info-value">-</span>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="output-container">
+      <section>
+        <h3>Dettagli Tecnici della Proof</h3>
+        <pre id="proofDetails"><code>(nessun dato caricato)</code></pre>
+      </section>
+    </div>
+
+    <nav style="margin-top: 20px; text-align: center;">
+      <a href="index.html" style="color: var(--primary); text-decoration: none; font-weight: 600;">← Torna alla Notarizzazione</a>
+    </nav>
+
+    <script type="module" src="verify.js?"></script>
+  </main>
+</body>
+</html>

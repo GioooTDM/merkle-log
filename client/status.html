@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PA Notary — Stato del Log</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <main class="container">
+    <header>
+      <h1>MerkeLog <span class="badge">System Status</span></h1>
+      <p class="subtitle">Monitoraggio in tempo reale dell'integrità del registro</p>
+    </header>
+
+    <div class="row">
+      <div class="card col stats-box">
+        <span class="label">Entry Totali</span>
+        <span id="totalEntries" class="value">---</span>
+      </div>
+      <div class="card col stats-box">
+        <span class="label">Altezza Albero</span>
+        <span id="treeSize" class="value">---</span>
+      </div>
+      <div class="card col stats-box">
+        <span class="label">Ultimo Checkpoint</span>
+        <span id="lastUpdate" class="value">---</span>
+      </div>
+    </div>
+
+    <section class="card" style="margin-top: 20px; border-left: 5px solid #f7931a;">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h3>Bitcoin Trust Anchor</h3>
+        <img src="https://upload.wikimedia.org/wikipedia/commons/4/46/Bitcoin.svg" alt="BTC" width="24">
+      </div>
+      <div class="info-display">
+        <p class="muted">L'ultimo Root Hash del log è stato ancorato nella Timechain di Bitcoin per prevenire la riscrittura della cronologia.</p>
+        
+        <div class="info-row">
+          <span class="info-label">Last TXID:</span>
+          <span class="info-value">
+            <a href="https://mempool.space/tx/4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b" target="_blank" style="color: var(--primary);">4a5e1e4ba...deda33b</a>
+          </span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Ancorato al Blocco:</span>
+          <span class="info-value">#874,122</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Merkle Root Ancorato:</span>
+          <span class="info-value" style="font-size: 11px;">e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top: 20px;">
+      <h3>Ultimo Checkpoint Firmato</h3>
+      <div class="checkpoint-info">
+        <p class="muted">Il checkpoint attesta lo stato attuale dell'albero di Merkle firmato dal log server.</p>
+        <pre id="checkpointRaw"><code>In attesa di dati dal server...</code></pre>
+      </div>
+    </section>
+
+    <div class="row" style="margin-top: 20px;">
+      <section class="card col">
+        <h3>Parametri Log</h3>
+        <div class="info-display">
+          <div class="info-row">
+            <span class="info-label">Storage Driver:</span>
+            <span class="info-value">POSIX Filesystem</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Hash Algorithm:</span>
+            <span class="info-value">SHA-256</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Batch Size:</span>
+            <span class="info-value">256 entries</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="card col">
+        <h3>Identità Server</h3>
+        <div class="info-display">
+          <div class="info-row">
+            <span class="info-label">Public Key (Note):</span>
+            <span class="info-value" style="font-size: 10px;">VKey:PA-Notary-2026...</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Endpoint:</span>
+            <span class="info-value">http://localhost:2025</span>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <nav style="margin-top: 30px; text-align: center;">
+      <a href="index.html" style="color: var(--primary); text-decoration: none; font-weight: 600;">← Torna alla Dashboard</a>
+    </nav>
+  </main>
+</body>
+</html>

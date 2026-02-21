@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PA Notary — Dettaglio Documento</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .header-status { text-align: center; margin-bottom: 20px; padding: 15px; border-radius: 8px; font-weight: bold; }
+    .status-latest { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+    .status-superseded { background-color: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
+    
+    .info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; }
+    .info-box { background: #fdfdfd; padding: 15px; border: 1px solid #eee; border-radius: 6px; }
+    .info-box .label { display: block; font-size: 0.8rem; color: #777; text-transform: uppercase; margin-bottom: 5px; font-weight: bold; }
+    .info-box .value { font-size: 1rem; color: #333; word-break: break-word; }
+    .info-box .value-mono { font-family: monospace; font-size: 0.85rem; color: var(--primary); }
+
+    /* Stile per la Cronologia */
+    .timeline { position: relative; padding-left: 20px; margin-top: 20px; list-style: none; }
+    .timeline::before { content: ''; position: absolute; left: 6px; top: 0; bottom: 0; width: 2px; background: #ddd; }
+    .timeline-item { position: relative; margin-bottom: 20px; }
+    .timeline-item::before { content: ''; position: absolute; left: -21px; top: 5px; width: 10px; height: 10px; border-radius: 50%; background: #ccc; border: 2px solid #fff; }
+    .timeline-item.active::before { background: var(--primary); box-shadow: 0 0 0 3px rgba(13, 71, 161, 0.2); }
+    .timeline-date { font-size: 0.8rem; color: #888; margin-bottom: 2px; }
+    .timeline-content { background: #f9f9f9; padding: 10px 15px; border-radius: 6px; border: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+    .timeline-item.active .timeline-content { border-color: var(--primary); background: #f0f4f8; }
+  </style>
+</head>
+
+<body>
+  <main class="container" style="max-width: 900px;">
+    
+    <div id="statusAlert" class="header-status" style="display: none;">
+      </div>
+
+    <header style="text-align: left; margin-bottom: 20px;">
+      <h1 id="docTitle">Caricamento...</h1>
+      <p class="subtitle" id="docUid">UID: ...</p>
+    </header>
+
+    <section class="card">
+      <h3>Dettagli Notarizzazione</h3>
+      <div class="info-grid">
+        <div class="info-box">
+          <span class="label">Ente Emittente</span>
+          <span class="value" id="docIssuer">...</span>
+        </div>
+        <div class="info-box">
+          <span class="label">Data Registrazione</span>
+          <span class="value" id="docDate">...</span>
+        </div>
+        <div class="info-box">
+          <span class="label">Indice Registro (Log Index)</span>
+          <span class="value value-mono" id="docIndex">...</span>
+        </div>
+        <div class="info-box">
+          <span class="label">Hash del Documento (SHA-256)</span>
+          <span class="value value-mono" id="docHash">...</span>
+        </div>
+        <div class="info-box" style="grid-column: 1 / -1;">
+          <span class="label">Note / Descrizione</span>
+          <span class="value" id="docNotes">...</span>
+        </div>
+      </div>
+      
+      <div style="margin-top: 25px; text-align: center;">
+        <a href="#" id="btnVerify" class="btn" style="text-decoration: none; display: inline-block;">Verifica Merkle Proof per questa Versione</a>
+      </div>
+    </section>
+
+    <section class="card">
+      <h3>Cronologia Versioni</h3>
+      <p class="muted" style="font-size: 0.85rem;">Tracciamento delle modifiche e degli aggiornamenti per questo identificativo.</p>
+      
+      <ul class="timeline" id="versionHistory">
+        </ul>
+    </section>
+
+    <nav style="margin-top: 30px; text-align: center;">
+      <a href="consult.html" style="color: var(--primary); text-decoration: none; font-weight: 600;">← Torna alla Ricerca</a>
+    </nav>
+  </main>
+
+  <script>
+  // Config
+  const API_BASE = "http://localhost:2025";
+
+  // 1) Estrai l'indice dalla URL (es. details.html?index=1209687)
+  const urlParams = new URLSearchParams(window.location.search);
+  const currentIndex = Number.parseInt(urlParams.get("index"), 10);
+
+  // Helper fetch
+  async function fetchText(url) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status} su ${url}`);
+    return res.text();
+  }
+
+  async function fetchJson(url) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status} su ${url}`);
+    return res.json();
+  }
+
+  function normalizeHex(h) {
+    return String(h || "").trim().toLowerCase().replace(/^hex:/, "");
+  }
+
+  function safeStr(v, fallback = "-") {
+    return (v === undefined || v === null || v === "") ? fallback : String(v);
+  }
+
+  function parseEvent(raw) {
+    const ev = JSON.parse(raw);
+
+    // Mappa campi in modo robusto (adatta se i nomi cambiano)
+    const doc_uid = ev.doc_uid;
+    const event_id = ev.event_id;
+    const event_type = (ev.event_type || "").toUpperCase();
+    const doc_version = Number(ev.doc_version || 0);
+
+    const issuer = ev.issuer?.name
+      ? `${ev.issuer.name}${ev.issuer?.entity_id ? ` (${ev.issuer.entity_id})` : ""}`
+      : safeStr(ev.issuer?.entity_id);
+
+    const date = safeStr(ev.recorded_at || ev.issued_at);
+    const title = safeStr(ev.title || `${event_type || "EVENTO"} — ${doc_uid}`);
+    const hash = normalizeHex(ev.payload_hash?.value);
+
+    const notes = safeStr(ev.notes || ev.description || "");
+
+    const prev_event_id = ev.prev_event_id ?? null;
+    const prev_event_leaf = (ev.prev_event_leaf === undefined || ev.prev_event_leaf === null) ? null : Number(ev.prev_event_leaf);
+
+    return {
+      raw,
+      ev,
+      uid: doc_uid,
+      event_id,
+      event_type,
+      version: doc_version,
+      issuer,
+      date,
+      title,
+      hash,
+      notes,
+      prev_event_id,
+      prev_event_leaf,
+    };
+  }
+
+  function sortHistory(events) {
+    // Preferisci la chain via prev_event_id (se presente e coerente), altrimenti fallback per doc_version/log_index.
+    const byEventID = new Map(events.map(e => [e.event_id, e]));
+    const nextByPrev = new Map(); // prev_event_id -> event
+    const prevCount = new Map();
+
+    for (const e of events) {
+      if (e.prev_event_id) {
+        nextByPrev.set(e.prev_event_id, e);
+        prevCount.set(e.prev_event_id, (prevCount.get(e.prev_event_id) || 0) + 1);
+      }
+    }
+
+    // trova CREATE come radice, altrimenti evento senza prev
+    let root = events.find(e => e.event_type === "CREATE" && !e.prev_event_id) ||
+               events.find(e => !e.prev_event_id) ||
+               null;
+
+    // Se non c'è una root chiara, fallback a sort per version poi index
+    if (!root) {
+      return [...events].sort((a, b) => (a.version - b.version) || (a.index - b.index));
+    }
+
+    // Se c'è fork (più eventi con stesso prev), non possiamo linearizzare bene: fallback e segnala altrove
+    for (const [pid, c] of prevCount.entries()) {
+      if (c > 1) {
+        return [...events].sort((a, b) => (a.version - b.version) || (a.index - b.index));
+      }
+    }
+
+    const out = [];
+    const visited = new Set();
+    let cur = root;
+    while (cur && !visited.has(cur.event_id)) {
+      visited.add(cur.event_id);
+      out.push(cur);
+      cur = nextByPrev.get(cur.event_id) || null;
+    }
+
+    // Se non abbiamo incluso tutto (buchi), fallback
+    if (out.length !== events.length) {
+      return [...events].sort((a, b) => (a.version - b.version) || (a.index - b.index));
+    }
+    return out;
+  }
+
+  async function loadDetails() {
+    if (!Number.isSafeInteger(currentIndex) || currentIndex < 0) {
+      document.getElementById('docTitle').innerText = "Indice non valido";
+      document.getElementById('docUid').innerText = "Passa ?index=<numero> nella URL.";
+      return;
+    }
+
+    // 2) Recupera l'entry corrente per ottenere doc_uid
+    const currentRaw = await fetchText(`${API_BASE}/get-entry/${currentIndex}`);
+    const currentParsed = parseEvent(currentRaw);
+
+    if (!currentParsed.uid) {
+      throw new Error("doc_uid mancante nell'evento corrente");
+    }
+
+    // 3) Recupera tutti gli indici per doc_uid
+    const idxResp = await fetchJson(`${API_BASE}/get-indexes?doc_uid=${encodeURIComponent(currentParsed.uid)}`);
+    const indexes = idxResp.indexes;
+
+    if (!Array.isArray(indexes) || indexes.length === 0) {
+      throw new Error("Nessun indice trovato per doc_uid");
+    }
+
+    // 4) Recupera tutte le entry (in parallelo, con fallback se qualche fetch fallisce)
+    const entries = await Promise.all(indexes.map(async (idx) => {
+      const raw = await fetchText(`${API_BASE}/get-entry/${idx}`);
+      const parsed = parseEvent(raw);
+      parsed.index = Number(idx);
+      return parsed;
+    }));
+
+    // Filtra solo quelle coerenti (stesso doc_uid)
+    const history = entries.filter(e => e.uid === currentParsed.uid);
+
+    // Ordina: preferisci catena prev_event_id, fallback su version/index
+    const ordered = sortHistory(history);
+
+    // 5) Trova documento corrente nella storia (se non c'è, usa quello corrente)
+    const currentDoc = ordered.find(d => d.index === currentIndex) || currentParsed;
+    currentDoc.index = currentIndex;
+
+    // Popola intestazione e griglia
+    document.getElementById('docTitle').innerText = currentDoc.title;
+    document.getElementById('docUid').innerText = `UID: ${currentDoc.uid} — Versione ${currentDoc.version || "-"}`;
+    document.getElementById('docIssuer').innerText = currentDoc.issuer;
+    document.getElementById('docDate').innerText = currentDoc.date;
+    document.getElementById('docIndex').innerText = currentDoc.index;
+    document.getElementById('docHash').innerText = currentDoc.hash || "-";
+    document.getElementById('docNotes').innerText = currentDoc.notes || "-";
+    document.getElementById('btnVerify').href = `verify.html?index=${currentDoc.index}`;
+
+    // Stato validità: versione più recente = ultima nell'ordine
+    const latestVersion = ordered[ordered.length - 1];
+    const statusAlert = document.getElementById('statusAlert');
+    statusAlert.style.display = 'block';
+
+    if (currentDoc.index === latestVersion.index) {
+      statusAlert.className = 'header-status status-latest';
+      statusAlert.innerHTML = `✓ VERSIONE ATTUALE: Questo è il documento più recente e valido.`;
+    } else {
+      statusAlert.className = 'header-status status-superseded';
+      statusAlert.innerHTML =
+        `⚠️ ATTENZIONE: Stai visualizzando una versione superata (v${currentDoc.version || "?"}). ` +
+        `Esiste una versione più recente (<a href="?index=${latestVersion.index}">Vai alla v${latestVersion.version || "?"}</a>).`;
+    }
+
+    // Render timeline
+    const historyContainer = document.getElementById('versionHistory');
+    historyContainer.innerHTML = "";
+
+    ordered.slice().reverse().forEach(doc => {
+      const isActive = doc.index === currentIndex;
+      const li = document.createElement('li');
+      li.className = `timeline-item ${isActive ? 'active' : ''}`;
+
+      li.innerHTML = `
+        <div class="timeline-date">${safeStr(doc.date)}</div>
+        <div class="timeline-content">
+          <div>
+            <strong>Versione ${safeStr(doc.version, "?")}</strong>
+            ${isActive ? '<span style="color:var(--primary); font-size:0.8rem;">(Visualizzata)</span>' : ''}<br>
+            <span class="muted" style="font-size: 0.85rem;">Index: ${doc.index}</span>
+          </div>
+          ${!isActive ? `<a href="?index=${doc.index}" class="btn btn-sm" style="padding: 4px 10px;">Vedi</a>` : ''}
+        </div>
+      `;
+      historyContainer.appendChild(li);
+    });
+  }
+
+  // Avvio
+  (async () => {
+    try {
+      await loadDetails();
+    } catch (err) {
+      console.error(err);
+      document.getElementById('docTitle').innerText = "Errore nel caricamento";
+      document.getElementById('docUid').innerText = err?.message || String(err);
+    }
+  })();
+</script>
+</body>
+</html>

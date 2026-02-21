@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PA Notary — Notarizza documento</title>
+  <link rel="stylesheet" href="style.css?655">
+</head>
+
+<body>
+  <main class="container">
+    <header>
+      <h1>MerkeLog <span class="badge">Notary Service</span></h1>
+      <p class="subtitle">Notarizzazione sicura di documenti PA</p>
+    </header>
+
+    <section class="card">
+      <div class="field-group main-upload">
+        <label for="file">Documento da notarizzare</label>
+        <input id="file" type="file" />
+      </div>
+
+      <hr class="divider" />
+
+      <div class="row">
+        <div class="col">
+          <label for="issuerId">Issuer Entity ID</label>
+          <input id="issuerId" placeholder="es: IPA:comune-roma" />
+        </div>
+        <div class="col">
+          <label for="issuerName">Issuer Name <span class="optional">(opzionale)</span></label>
+          <input id="issuerName" placeholder="es: Comune di Roma" />
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col">
+          <label for="docUid">Document Unique ID</label>
+          <input id="docUid" placeholder="es: PROT/2026/123456" />
+        </div>
+        <div class="col">
+          <label for="eventType">Tipo Evento</label>
+          <select id="eventType">
+            <option value="CREATE">CREATE (Nuovo)</option>
+            <option value="UPDATE">UPDATE (Aggiornamento)</option>
+            <option value="REVOKE">REVOKE (Revoca)</option>
+            <option value="EXPIRE">EXPIRE (Scadenza)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col">
+          <label for="docVersion">Versione</label>
+          <input id="docVersion" type="number" min="1" value="1" />
+        </div>
+        <div class="col">
+          <label for="prevEventId">Previous Event ID</label>
+          <input id="prevEventId" placeholder="UUIDv4 (richiesto per UPDATE/REVOKE)" />
+        </div>
+      </div>
+
+      <div class="field-group">
+        <label for="title">Titolo</label>
+        <input id="title" placeholder="Titolo breve per la UI" />
+      </div>
+
+      <div class="field-group">
+        <label for="description">Descrizione <span class="optional">(opzionale)</span></label>
+        <textarea id="description" placeholder="1–3 frasi riassuntive..."></textarea>
+      </div>
+
+      <div class="field-group">
+        <label for="notes">Note Interne <span class="optional">(opzionale)</span></label>
+        <textarea id="notes" placeholder="Annotazioni tecniche o libere"></textarea>
+      </div>
+
+      <div class="actions">
+        <button id="btnMock" class="btn-info">✨ Genera Dati Test</button>
+        <button id="btnBuild" class="btn-primary">1. Genera JSON</button>
+        <button id="btnSend" class="btn-secondary" disabled>2. Invia a /add</button>
+        <button id="btnDownload" class="btn-outline" disabled>Scarica JSON</button>
+      </div>
+
+      <p class="muted">
+        <strong>Nota:</strong> Il sistema calcola l'hash SHA-256 del file. Il limite per il payload JSON è di 2KB.
+      </p>
+
+      <div id="status"></div>
+    </section>
+
+    <div class="output-container">
+        <section>
+            <h3>JSON Canonicalizzato</h3>
+            <pre id="out"><code>(in attesa di generazione...)</code></pre>
+        </section>
+
+        <section>
+            <h3>Risposta Server</h3>
+            <pre id="resp"><code>(nessuna risposta)</code></pre>
+        </section>
+    </div>
+
+    <nav style="margin-top: 30px; text-align: center;">
+      <a href="index.html" style="color: var(--primary); text-decoration: none; font-weight: 600;">← Torna alla Dashboard</a>
+    </nav>
+  </main>
+
+  <script type="module" src="./notarizzazione.js"></script>
+</body>
+</html>

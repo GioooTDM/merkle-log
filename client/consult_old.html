@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PA Notary — Consultazione Registro</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .filter-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
+    .form-group { display: flex; flex-direction: column; }
+    .form-group label { font-size: 0.85rem; font-weight: bold; color: #555; margin-bottom: 5px; }
+    .form-control { padding: 8px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.95rem; }
+    
+    .table-responsive { overflow-x: auto; margin-top: 15px; }
+    .registry-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    .registry-table th, .registry-table td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #eee; }
+    .registry-table th { background-color: #f8f9fa; color: #333; font-weight: 600; white-space: nowrap; }
+    .registry-table tr:hover { background-color: #fcfcfc; }
+    
+    .badge-version { background: #e3f2fd; color: #0d47a1; padding: 3px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: bold; }
+    .badge-index { font-family: monospace; background: #eee; padding: 3px 6px; border-radius: 4px; color: #555; }
+    
+    .action-link { color: var(--primary); text-decoration: none; font-weight: bold; font-size: 0.85rem; }
+    .action-link:hover { text-decoration: underline; }
+  </style>
+</head>
+
+<body>
+  <main class="container" style="max-width: 900px;">
+    <header>
+      <h1>Consultazione <span class="badge">Registro Pubblico</span></h1>
+      <p class="subtitle">Esplora la timeline degli eventi o cerca uno specifico documento notarizzato</p>
+    </header>
+
+    <section class="card">
+      <h3>Parametri di Ricerca</h3>
+      <div class="filter-grid">
+        
+        <div class="form-group">
+          <label for="filterIssuer">Ente Emittente</label>
+          <select id="filterIssuer" class="form-control">
+            <option value="">Tutti gli Enti</option>
+            <option value="IPA:c_torino">Comune di Torino</option>
+            <option value="IPA:r_piemonte">Regione Piemonte</option>
+            <option value="IPA:m_interno">Ministero dell'Interno</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="filterUid">ID Documento (UID)</label>
+          <input type="text" id="filterUid" class="form-control" placeholder="Es. CERTIFICATO/2026/2150">
+        </div>
+
+        <div class="form-group">
+          <label for="filterDateFrom">Data Inizio</label>
+          <input type="date" id="filterDateFrom" class="form-control">
+        </div>
+        <div class="form-group">
+          <label for="filterDateTo">Data Fine</label>
+          <input type="date" id="filterDateTo" class="form-control">
+        </div>
+
+      </div>
+      <div style="text-align: right;">
+        <button class="btn" id="btnSearch" style="padding: 8px 20px;">Applica Filtri</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h3>Risultati</h3>
+        <span class="muted" style="font-size: 0.85rem;" id="resultCount">Mostrando gli ultimi 5 inserimenti</span>
+      </div>
+
+      <div class="table-responsive">
+        <table class="registry-table">
+          <thead>
+            <tr>
+              <th>Index</th>
+              <th>Data</th>
+              <th>Ente</th>
+              <th>Documento</th>
+              <th>Versione</th>
+              <th>Azione</th>
+            </tr>
+          </thead>
+          <tbody id="resultsBody">
+            </tbody>
+        </table>
+      </div>
+    </section>
+
+    <nav style="margin-top: 30px; text-align: center;">
+      <a href="index.html" style="color: var(--primary); text-decoration: none; font-weight: 600;">← Torna alla Dashboard</a>
+    </nav>
+  </main>
+
+  <script>
+    const btnSearch = document.getElementById('btnSearch');
+    const resultsBody = document.getElementById('resultsBody');
+    const resultCount = document.getElementById('resultCount');
+
+    // Dati MOCK per simulare la risposta del database
+    const mockDatabase = [
+      { index: 1209689, date: "2026-02-20 15:30", issuer: "Comune di Torino", uid: "CERTIFICATO/2026/2150", version: 3, title: "Certificato dirigenziale n. 2150 (Rettifica)" },
+      { index: 1209688, date: "2026-02-19 10:15", issuer: "Regione Piemonte", uid: "DELIBERA/2026/88", version: 1, title: "Delibera Giunta Regionale n. 88" },
+      { index: 1209687, date: "2026-02-19 00:01", issuer: "Comune di Torino", uid: "CERTIFICATO/2026/2150", version: 2, title: "Certificato dirigenziale n. 2150 (Aggiornamento)" },
+      { index: 1209680, date: "2026-02-18 09:00", issuer: "Comune di Torino", uid: "CERTIFICATO/2026/2150", version: 1, title: "Certificato dirigenziale n. 2150" },
+      { index: 1209650, date: "2026-02-15 14:20", issuer: "Ministero dell'Interno", uid: "CIRCOLARE/2026/12", version: 1, title: "Circolare Ministeriale n. 12" }
+    ];
+
+    // Funzione per renderizzare la tabella
+    function renderTable(data) {
+      resultsBody.innerHTML = "";
+      
+      if (data.length === 0) {
+        resultsBody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 20px; color: #777;">Nessun documento trovato con i filtri selezionati.</td></tr>`;
+        resultCount.innerText = "0 risultati";
+        return;
+      }
+
+      data.forEach(item => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><span class="badge-index">${item.index}</span></td>
+          <td style="white-space: nowrap;">${item.date}</td>
+          <td>${item.issuer}</td>
+          <td>
+            <strong>${item.title}</strong><br>
+            <span class="muted" style="font-size: 0.75rem;">UID: ${item.uid}</span>
+          </td>
+          <td><span class="badge-version">v${item.version}</span></td>
+          <td><a href="verify.html?index=${item.index}" class="action-link">Vedi Proof →</a></td>
+        `;
+        resultsBody.appendChild(tr);
+      });
+      
+      resultCount.innerText = `Mostrando ${data.length} risultati`;
+    }
+
+    // Inizializzazione: mostra tutti i mock data (Timeline di default)
+    renderTable(mockDatabase);
+
+    // Simulazione del click su "Applica Filtri"
+    btnSearch.addEventListener('click', () => {
+      btnSearch.innerText = "Ricerca in corso...";
+      btnSearch.disabled = true;
+
+      // Recupero valori (nel sistema reale li manderemo al backend Go)
+      const filterIssuerText = document.getElementById('filterIssuer').options[document.getElementById('filterIssuer').selectedIndex].text;
+      const filterUid = document.getElementById('filterUid').value.trim();
+
+      setTimeout(() => {
+        // Simulazione filtraggio lato client (solo per il mockup)
+        let filtered = mockDatabase;
+        
+        if (filterIssuerText !== "Tutti gli Enti") {
+          filtered = filtered.filter(d => d.issuer === filterIssuerText);
+        }
+        
+        if (filterUid !== "") {
+          filtered = filtered.filter(d => d.uid.includes(filterUid));
+        }
+
+        renderTable(filtered);
+        
+        btnSearch.innerText = "Applica Filtri";
+        btnSearch.disabled = false;
+      }, 500); // Finto ritardo di rete
+    });
+  </script>
+</body>
+</html>

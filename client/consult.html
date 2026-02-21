@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PA Notary — Consultazione Registro</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .filter-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
+    .form-group { display: flex; flex-direction: column; }
+    .form-group label { font-size: 0.85rem; font-weight: bold; color: #555; margin-bottom: 5px; }
+    .form-control { padding: 8px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.95rem; }
+
+    .table-responsive { overflow-x: auto; margin-top: 15px; }
+    .registry-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    .registry-table th, .registry-table td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #eee; }
+    .registry-table th { background-color: #f8f9fa; color: #333; font-weight: 600; white-space: nowrap; }
+    .registry-table tr:hover { background-color: #fcfcfc; }
+
+    .badge-version { background: #e3f2fd; color: #0d47a1; padding: 3px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: bold; }
+    .badge-index { font-family: monospace; background: #eee; padding: 3px 6px; border-radius: 4px; color: #555; }
+
+    .action-link { color: var(--primary); text-decoration: none; font-weight: bold; font-size: 0.85rem; }
+    .action-link:hover { text-decoration: underline; }
+  </style>
+</head>
+
+<body>
+  <main class="container" style="max-width: 900px;">
+    <header>
+      <h1>Consultazione <span class="badge">Registro Pubblico</span></h1>
+      <p class="subtitle">Esplora la timeline degli eventi o cerca uno specifico documento notarizzato</p>
+    </header>
+
+    <section class="card">
+      <h3>Parametri di Ricerca</h3>
+      <div class="filter-grid">
+
+        <div class="form-group">
+          <label for="filterIssuer">Ente Emittente</label>
+          <select id="filterIssuer" class="form-control">
+            <option value="">Tutti gli Enti</option>
+            <option value="IPA:c_torino">Comune di Torino</option>
+            <option value="IPA:r_piemonte">Regione Piemonte</option>
+            <option value="IPA:m_interno">Ministero dell'Interno</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="filterUid">ID Documento (UID)</label>
+          <input type="text" id="filterUid" class="form-control" placeholder="Es. CERTIFICATO/2026/2150">
+        </div>
+
+        <div class="form-group">
+          <label for="filterDateFrom">Data Inizio</label>
+          <input type="date" id="filterDateFrom" class="form-control">
+        </div>
+        <div class="form-group">
+          <label for="filterDateTo">Data Fine</label>
+          <input type="date" id="filterDateTo" class="form-control">
+        </div>
+
+      </div>
+      <div style="text-align: right;">
+        <button class="btn" id="btnSearch" style="padding: 8px 20px;">Applica Filtri</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h3>Risultati</h3>
+        <span class="muted" style="font-size: 0.85rem;" id="resultCount">Inserisci un doc_uid e premi “Applica Filtri”</span>
+      </div>
+
+      <div class="table-responsive">
+        <table class="registry-table">
+          <thead>
+            <tr>
+              <th>Index</th>
+              <th>Data</th>
+              <th>Ente</th>
+              <th>Documento</th>
+              <th>Versione</th>
+              <th>Azione</th>
+            </tr>
+          </thead>
+          <tbody id="resultsBody">
+            <tr>
+              <td colspan="6" style="text-align:center; padding: 20px; color: #777;">
+                Nessuna ricerca eseguita.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <nav style="margin-top: 30px; text-align: center;">
+      <a href="index.html" style="color: var(--primary); text-decoration: none; font-weight: 600;">← Torna alla Dashboard</a>
+    </nav>
+  </main>
+
+  <script>
+    const API_BASE = "http://localhost:2025";
+
+    const btnSearch = document.getElementById('btnSearch');
+    const resultsBody = document.getElementById('resultsBody');
+    const resultCount = document.getElementById('resultCount');
+    const filterUidEl = document.getElementById('filterUid');
+
+    function safeStr(v, fallback = "-") {
+      return (v === undefined || v === null || v === "") ? fallback : String(v);
+    }
+
+    function normalizeHex(h) {
+      return String(h || "").trim().toLowerCase().replace(/^hex:/, "");
+    }
+
+    function parseIssuer(issuerObj) {
+      if (!issuerObj) return "-";
+      const name = issuerObj.name ? String(issuerObj.name) : "-";
+      return name;
+      // const id = issuerObj.entity_id ? String(issuerObj.entity_id) : "";
+      // if (name && id) return `${name} (${id})`;
+      // return name || id || "-";
+    }
+
+    function formatDate(s) {
+      if (!s) return "-";
+
+      const d = new Date(s);
+      if (isNaN(d.getTime())) return s; // fallback se formato strano
+
+      const pad = (n) => n.toString().padStart(2, "0");
+
+      const year  = d.getFullYear();
+      const month = pad(d.getMonth() + 1);
+      const day   = pad(d.getDate());
+      const hours = pad(d.getHours());
+      const mins  = pad(d.getMinutes());
+      const secs  = pad(d.getSeconds());
+
+      return `${year}-${month}-${day} ${hours}:${mins}:${secs}`;
+    }
+
+    async function fetchJson(url) {
+      const res = await fetch(url);
+      if (!res.ok) {
+        const t = await res.text().catch(() => "");
+        throw new Error(`HTTP ${res.status}: ${t || "Richiesta fallita"}`);
+      }
+      return res.json();
+    }
+
+    // Render tabella: si aspetta array di "row" con campi già pronti
+    function renderTable(rows) {
+      resultsBody.innerHTML = "";
+
+      if (!rows || rows.length === 0) {
+        resultsBody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 20px; color: #777;">Nessun documento trovato per il doc_uid indicato.</td></tr>`;
+        resultCount.innerText = "0 risultati";
+        return;
+      }
+
+      rows.forEach(item => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><span class="badge-index">${item.index}</span></td>
+          <td style="white-space: nowrap;">${item.date}</td>
+          <td>${item.issuer}</td>
+          <td>
+            <strong>${item.title}</strong><br>
+            <span class="muted" style="font-size: 0.75rem;">UID: ${item.uid}</span>
+          </td>
+          <td><span class="badge-version">v${item.version}</span></td>
+          <td><a href="details.html?index=${item.index}" class="action-link">Dettagli →</a></td>
+        `;
+        resultsBody.appendChild(tr);
+      });
+
+      resultCount.innerText = `Mostrando ${rows.length} risultati`;
+    }
+
+    function rowsFromApiResponse(apiResp) {
+      // apiResp: { doc_uid, indexes, count, entries:[{...}, ...] }
+      const uid = apiResp?.doc_uid;
+      const idxs = Array.isArray(apiResp?.indexes) ? apiResp.indexes : [];
+      const entries = Array.isArray(apiResp?.entries) ? apiResp.entries : [];
+
+      // entries può essere array di oggetti già parsati (json.RawMessage -> JSON)
+      // oppure stringhe: gestiamo entrambi
+      const parsed = entries.map((e) => {
+        if (typeof e === "string") {
+          try { return JSON.parse(e); } catch { return null; }
+        }
+        return e;
+      }).filter(Boolean);
+
+      // Proviamo ad associare index<->entry per posizione (il backend li invia allineati)
+      const rows = [];
+      for (let i = 0; i < Math.min(idxs.length, parsed.length); i++) {
+        const ev = parsed[i];
+        rows.push({
+          index: idxs[i],
+          date: formatDate(ev.recorded_at || ev.issued_at),
+          issuer: parseIssuer(ev.issuer),
+          uid: safeStr(ev.doc_uid || uid),
+          version: safeStr(ev.doc_version, "?"),
+          title: safeStr(ev.title || ev.event_type || "Evento"),
+          // extra utili se ti servono dopo:
+          event_id: safeStr(ev.event_id),
+          event_type: safeStr(ev.event_type),
+          payload_hash: normalizeHex(ev?.payload_hash?.value),
+        });
+      }
+
+      // Ordina DESC per versione (o fallback: index desc) così vedi prima l'ultima
+      rows.sort((a, b) => {
+        const av = Number(a.version), bv = Number(b.version);
+        const avOk = Number.isFinite(av), bvOk = Number.isFinite(bv);
+        if (avOk && bvOk && av !== bv) return bv - av;
+        return Number(b.index) - Number(a.index);
+      });
+
+      return rows;
+    }
+
+    async function searchByDocUID(docUID) {
+      const url = `${API_BASE}/get-entries-by-docuid?doc_uid=${encodeURIComponent(docUID)}`;
+      const resp = await fetchJson(url);
+      return rowsFromApiResponse(resp);
+    }
+
+    // Ricerca su click
+    btnSearch.addEventListener('click', async () => {
+      const docUID = filterUidEl.value.trim();
+
+      // Per ora: solo doc_uid
+      if (!docUID) {
+        renderTable([]);
+        resultCount.innerText = "Inserisci un doc_uid per cercare";
+        return;
+      }
+
+      btnSearch.innerText = "Ricerca in corso...";
+      btnSearch.disabled = true;
+
+      try {
+        const rows = await searchByDocUID(docUID);
+        renderTable(rows);
+      } catch (err) {
+        console.error(err);
+        resultsBody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 20px; color: #b00020;">
+          Errore: ${safeStr(err?.message, "richiesta fallita")}
+        </td></tr>`;
+        resultCount.innerText = "Errore";
+      } finally {
+        btnSearch.innerText = "Applica Filtri";
+        btnSearch.disabled = false;
+      }
+    });
+
+    // Enter per cercare
+    filterUidEl.addEventListener('keydown', (e) => {
+      if (e.key === "Enter") btnSearch.click();
+    });
+  </script>
+</body>
+</html>

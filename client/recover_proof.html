@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PA Notary — Verifica & Proof</title>
+
+  <link rel="stylesheet" href="style.css">
+
+  <style>
+    /* --- UI / Stepper --- */
+    .proof-step { padding: 15px; border-left: 3px solid #ddd; margin-bottom: 20px; background: #fdfdfd; transition: all 0.3s ease; }
+    .proof-step.active { border-left-color: var(--primary); opacity: 1 !important; }
+    .hash-display { font-family: monospace; font-size: 0.85rem; word-break: break-all; background: #eee; padding: 10px; border-radius: 4px; margin-top: 10px; }
+    pre { background: #2d2d2d; color: #ccc; padding: 15px; border-radius: 5px; font-size: 0.8rem; overflow-x: auto; max-height: 250px; }
+    .json-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 10px; }
+    .status-badge { padding: 5px 12px; border-radius: 20px; font-weight: bold; font-size: 0.9rem; }
+    .status-valid { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+    .proof-list { list-style: none; padding: 0; font-family: monospace; font-size: 0.75rem; margin: 0; }
+    .proof-item { padding: 6px 8px; border-bottom: 1px solid #eee; color: #555; overflow-x: auto; }
+    .label-small { font-size: 0.7rem; color: #666; text-transform: uppercase; font-weight: bold; }
+
+    /* Piccoli miglioramenti UX senza cambiare layout */
+    .dropzone { user-select: none; }
+    .dropzone:focus, .dropzone:hover { border-color: var(--primary) !important; }
+    .btn[disabled] { opacity: 0.6; cursor: not-allowed; }
+  </style>
+</head>
+
+<body>
+  <main class="container">
+    <header>
+      <h1>Verifica Integrità <span class="badge">Merkle Proof</span></h1>
+      <p class="subtitle">Carica il documento per recuperare l'evento notarizzato e la proof di inclusione dal Merkle Log</p>
+    </header>
+
+    <section class="card proof-step active" id="step1">
+      <h3>1. Selezione Documento</h3>
+      <div id="dropzone" class="dropzone" style="border: 2px dashed #ccc; padding: 20px; text-align: center; cursor: pointer;" tabindex="0" role="button" aria-label="Seleziona documento PDF">
+        <p id="dropzoneText">Clicca qui per selezionare il PDF da verificare</p>
+        <input type="file" id="fileInput" hidden accept="application/pdf">
+      </div>
+      <div id="docResult" style="display:none; margin-top:10px;">
+        <span class="label-small">Hash documento calcolato in locale (SHA-256):</span>
+        <div class="hash-display" id="docHashDisplay">...</div>
+      </div>
+    </section>
+
+    <section class="card proof-step" id="step2" style="opacity: 0.5;">
+      <div class="json-header">
+        <h3>2. Evento Notarizzato </h3>
+        <button class="btn btn-sm" id="btnDownloadJson" style="display:none;">Scarica JSON (raw)</button>
+      </div>
+
+      <p class="muted">Ricerca nel registro tramite l'hash del documento.</p>
+
+      <div id="proofStatus">
+        <button class="btn" id="btnFetchData" disabled>Cerca nel Registro</button>
+      </div>
+
+      <div id="jsonPreview" style="display:none; margin-top:15px;">
+        <div class="info-row" style="margin-bottom: 10px;">
+            <span class="info-label">Indice nel Log:</span>
+            <span id="resIndex" class="info-value" style="font-weight:bold; color:var(--primary);">--</span>
+        </div>
+        <pre id="jsonDisplay"><code></code></pre>
+        <div style="margin: 10px 0px;">
+            <span class="label-small">Hash dell'evento (SHA-256 del JSON raw):</span>
+            <div class="hash-display" id="leafHashDisplay" style="background: #e3f2fd; border: 1px solid #bbdefb;">...</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card proof-step" id="step3" style="opacity: 0.5;">
+      <h3>3. Verifica Integrità Documento</h3>
+      <p class="muted">Confronto tra hash locale e hash registrato nell'evento notarizzato.</p>
+      <div id="finalResult" style="text-align: center; display: none; padding: 10px;"></div>
+    </section>
+
+    <section class="card proof-step" id="step4" style="opacity: 0.5;">
+      <div class="json-header">
+        <h3>4. Merkle Inclusion Proof (dal Log)</h3>
+        <button class="btn btn-sm" id="btnDownloadProof" style="display:none;">Scarica Proof</button>
+      </div>
+      <p class="muted">Recupero del percorso di inclusione dal server.</p>
+
+      <button class="btn" id="btnGetProof" disabled>Richiedi Inclusion Proof</button>
+
+      <div id="proofDisplayArea" style="display:none; margin-top:15px;">
+        <div class="info-row">
+            <span class="info-label">Merkle Root (checkpoint):</span>
+            <span id="rootHash" class="info-value" style="font-size:0.7rem; font-family:monospace; word-break: break-all;">...</span>
+        </div>
+        <p class="muted" style="font-size: 0.8rem; margin-top: 10px;">Audit path (hash siblings, in ordine):</p>
+        <ul class="proof-list" id="proofList"></ul>
+      </div>
+    </section>
+
+    <nav style="margin-top: 30px; text-align: center;">
+      <a href="index.html" style="color: var(--primary); text-decoration: none; font-weight: 600;">← Torna alla Dashboard</a>
+    </nav>
+  </main>
+
+  <script>
+    // --- Config ---
+    const API_BASE = "http://localhost:2025";
+
+    // --- DOM refs ---
+    const fileInput = document.getElementById('fileInput');
+    const dropzone = document.getElementById('dropzone');
+    const btnFetch = document.getElementById('btnFetchData');
+    const btnGetProof = document.getElementById('btnGetProof');
+    const proofDisplayArea = document.getElementById('proofDisplayArea');
+    const proofList = document.getElementById('proofList');
+    const btnDownloadProof = document.getElementById('btnDownloadProof');
+    const leafHashDisplay = document.getElementById('leafHashDisplay');
+
+    const elStep2 = document.getElementById('step2');
+    const elStep3 = document.getElementById('step3');
+    const elStep4 = document.getElementById('step4');
+    const elDocResult = document.getElementById('docResult');
+    const elDocHashDisplay = document.getElementById('docHashDisplay');
+    const elDropzoneText = document.getElementById('dropzoneText');
+    const elJsonPreview = document.getElementById('jsonPreview');
+    const elJsonDisplay = document.getElementById('jsonDisplay');
+    const elBtnDownloadJson = document.getElementById('btnDownloadJson');
+    const elResIndex = document.getElementById('resIndex');
+    const elFinalResult = document.getElementById('finalResult');
+    const elRootHash = document.getElementById('rootHash');
+
+    // --- State ---
+    let currentDocHash = "";
+    let logIndex = null;
+
+    // Helper per calcolare SHA-256 di una stringa o ArrayBuffer
+    async function calculateHash(data) {
+      const msgUint8 = (typeof data === 'string')
+        ? new TextEncoder().encode(data)
+        : new Uint8Array(data);
+
+      const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
+      return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    function normalizeHex(h) {
+      return String(h || "").trim().toLowerCase().replace(/^hex:/, "");
+    }
+
+    function setStepEnabled(stepEl, enabled) {
+      stepEl.style.opacity = enabled ? "1" : "0.5";
+      if (enabled) stepEl.classList.add("active");
+    }
+
+    function resetDownstream(fromStep) {
+      // fromStep: 2,3,4 -> reset data
+      if (fromStep <= 2) {
+        elJsonPreview.style.display = "none";
+        elBtnDownloadJson.style.display = "none";
+        elJsonDisplay.textContent = "";
+        leafHashDisplay.textContent = "...";
+        elResIndex.textContent = "--";
+        logIndex = null;
+        btnGetProof.disabled = true;
+        proofDisplayArea.style.display = "none";
+        btnDownloadProof.style.display = "none";
+        btnGetProof.style.display = "inline-block";
+      }
+      if (fromStep <= 3) {
+        elFinalResult.style.display = "none";
+        elFinalResult.innerHTML = "";
+      }
+      if (fromStep <= 4) {
+        proofList.innerHTML = "";
+        elRootHash.textContent = "...";
+      }
+      elStep3.classList.remove("active");
+      elStep4.classList.remove("active");
+      elStep4.style.opacity = "0.5";
+      btnGetProof.disabled = true;
+    }
+
+    async function safeFetchJson(url) {
+      const res = await fetch(url);
+      if (!res.ok) {
+        const t = await res.text().catch(() => "");
+        throw new Error(`HTTP ${res.status}: ${t || "Richiesta fallita"}`);
+      }
+      return res.json();
+    }
+
+    async function safeFetchText(url) {
+      const res = await fetch(url);
+      if (!res.ok) {
+        const t = await res.text().catch(() => "");
+        throw new Error(`HTTP ${res.status}: ${t || "Richiesta fallita"}`);
+      }
+      return res.text();
+    }
+
+    // --- STEP 1: Calcolo Hash PDF ---
+    dropzone.addEventListener('click', () => fileInput.click());
+    dropzone.addEventListener('keydown', (e) => {
+      if (e.key === "Enter" || e.key === " ") fileInput.click();
+    });
+
+    fileInput.addEventListener('change', async (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+
+      try {
+        resetDownstream(2);
+
+        elDocResult.style.display = 'block';
+        elDropzoneText.innerText = file.name;
+
+        const arrayBuffer = await file.arrayBuffer();
+        currentDocHash = await calculateHash(arrayBuffer);
+        elDocHashDisplay.innerText = currentDocHash;
+
+        setStepEnabled(elStep2, true);
+        btnFetch.disabled = false;
+      } catch (err) {
+        alert("Errore nel calcolo hash documento: " + err.message);
+      }
+    });
+
+    // --- STEP 2 & 3: Recupero Dati e Validazione ---
+    btnFetch.addEventListener('click', async () => {
+      btnFetch.innerText = "Ricerca in corso...";
+      btnFetch.disabled = true;
+
+      try {
+        if (!currentDocHash) throw new Error("Seleziona prima un documento.");
+
+        // 1) Trova index dal doc hash
+        const data = await safeFetchJson(`${API_BASE}/get-by-doc?hash=${encodeURIComponent(currentDocHash)}`);
+        logIndex = data.log_index;
+        if (logIndex === undefined || logIndex === null) throw new Error("Risposta /get-by-doc non valida.");
+
+        // 2) Recupera entry dal log
+        const eventRaw = await safeFetchText(`${API_BASE}/get-entry/${encodeURIComponent(logIndex)}`);
+
+        // IMPORTANT: usiamo il testo RAW per calcolare lo stesso hash del contenuto ricevuto
+        const eventJson = JSON.parse(eventRaw);
+
+        // 3) Hash dell'evento (diagnostico)
+        const leafHash = await calculateHash(eventRaw);
+        leafHashDisplay.innerText = leafHash;
+
+        // 4) UI preview
+        elJsonDisplay.innerText = JSON.stringify(eventJson, null, 4);
+        elJsonPreview.style.display = 'block';
+        elBtnDownloadJson.style.display = 'inline-block';
+        setStepEnabled(elStep2, true);
+
+        elResIndex.innerText = logIndex;
+        setupDownloadJson(eventRaw, logIndex);
+
+        // 5) STEP 3: verifica integrità doc vs recorded hash nel JSON
+        const recordedDocHash = normalizeHex(eventJson?.payload_hash?.value);
+        const isValid = normalizeHex(currentDocHash) === recordedDocHash;
+
+        elFinalResult.style.display = 'block';
+        elFinalResult.innerHTML = isValid
+          ? `<div class="status-badge status-valid">✓ INTEGRITÀ CONFERMATA: l'hash del documento coincide</div>
+             <p class="muted" style="margin-top:10px; font-size:0.8rem;">
+               Il documento caricato corrisponde a quanto registrato all'indice <b>${elResIndex.innerText}</b>.
+             </p>`
+          : `<div class="status-badge" style="background:#f8d7da; color:#721c24; border: 1px solid #f5c6cb;">
+               ✗ ERRORE: hash documento NON corrispondente
+             </div>
+             <p class="muted" style="margin-top:10px; font-size:0.8rem;">
+               Hash locale: <span style="font-family:monospace">${currentDocHash}</span><br/>
+               Hash registrato: <span style="font-family:monospace">${recordedDocHash || "-"}</span>
+             </p>`;
+
+        if (isValid) {
+          setStepEnabled(elStep3, true);
+          elStep4.style.opacity = '1';
+          btnGetProof.disabled = false;
+        } else {
+          resetDownstream(4);
+        }
+
+      } catch (err) {
+        alert(err.message || String(err));
+      } finally {
+        btnFetch.innerText = "Cerca nel Registro";
+        btnFetch.disabled = false;
+      }
+    });
+
+    // --- STEP 4: Chiamata reale a /get-proof/ ---
+    btnGetProof.addEventListener('click', async () => {
+      btnGetProof.innerText = "Recupero proof...";
+      btnGetProof.disabled = true;
+
+      try {
+        if (logIndex === null) throw new Error("Indice log non disponibile.");
+
+        const proofData = await safeFetchJson(`${API_BASE}/get-proof/${encodeURIComponent(logIndex)}`);
+
+        if (!proofData.proof || !Array.isArray(proofData.proof)) {
+          throw new Error("Formato proof non valido ricevuto dal server.");
+        }
+
+        proofList.innerHTML = proofData.proof.map(h => `<li class="proof-item">${h}</li>`).join('');
+        elRootHash.innerText = proofData.root_hash || "(mancante)";
+
+        proofDisplayArea.style.display = 'block';
+        btnDownloadProof.style.display = 'inline-block';
+        btnGetProof.style.display = 'none';
+        setStepEnabled(elStep4, true);
+
+        setupDownloadProof(proofData);
+
+      } catch (err) {
+        alert("Errore Step 4: " + (err.message || String(err)));
+        btnGetProof.disabled = false;
+        btnGetProof.innerText = "Richiedi Inclusion Proof";
+      }
+    });
+
+    function setupDownloadProof(proof) {
+      btnDownloadProof.onclick = () => {
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(proof, null, 2));
+        const link = document.createElement('a');
+        link.setAttribute("href", dataStr);
+        link.setAttribute("download", `merkle_proof_idx_${logIndex}.json`);
+        link.click();
+      };
+    }
+
+    function setupDownloadJson(rawString, index) {
+      elBtnDownloadJson.onclick = () => {
+        const link = document.createElement('a');
+        // Manteniamo RAW (senza re-stringify) per preservare i byte così come scaricati.
+        link.href = "data:application/json;charset=utf-8," + encodeURIComponent(rawString);
+        link.download = `notary_event_${index}.json`;
+        link.click();
+      };
+    }
+  </script>
+</body>
+</html>
