@@ -22,6 +22,7 @@ import (
 	"time"
 
 	jsoncanonicalizer "github.com/cyberphone/json-canonicalization/go/src/webpki.org/jsoncanonicalizer"
+	"github.com/go-pdf/fpdf"
 )
 
 type PayloadHash struct {
@@ -290,8 +291,7 @@ func postEvent(ctx context.Context, client *http.Client, url string, ev NotaryEv
 	return n
 }
 
-// ---- PDF generator (minimal, single page, Helvetica, multi-line text) ----
-// This generates a simple valid PDF with one page containing your lines.
+// ---- PDF generator ----
 
 func mustMakePDF(lines []string) []byte {
 	pdf, err := makePDF(lines)
@@ -302,88 +302,26 @@ func mustMakePDF(lines []string) []byte {
 }
 
 func makePDF(lines []string) ([]byte, error) {
-	// Content stream: write each line with Td down.
-	var content bytes.Buffer
-	content.WriteString("BT\n")
-	content.WriteString("/F1 12 Tf\n")
-	content.WriteString("72 760 Td\n") // start position
-	lineStep := 14
+	pdf := fpdf.New("P", "mm", "A4", "")
+	pdf.SetMargins(20, 20, 20)
+	pdf.SetAutoPageBreak(true, 20)
+	pdf.AddPage()
+	pdf.SetFont("Helvetica", "", 12)
 
-	for i, ln := range lines {
-		ln = escapePDFText(ln)
-		content.WriteString("(")
-		content.WriteString(ln)
-		content.WriteString(") Tj\n")
-		if i != len(lines)-1 {
-			content.WriteString(fmt.Sprintf("0 -%d Td\n", lineStep))
-		}
+	translate := pdf.UnicodeTranslatorFromDescriptor("")
+	for _, line := range lines {
+		pdf.MultiCell(0, 6, translate(line), "", "L", false)
 	}
-	content.WriteString("ET\n")
 
-	contentBytes := content.Bytes()
+	if pdf.Err() {
+		return nil, fmt.Errorf("pdf build error: %v", pdf.Error())
+	}
 
-	// Build objects
-	// 1: catalog, 2: pages, 3: page, 4: font, 5: content stream
 	var out bytes.Buffer
-	write := func(s string) { out.WriteString(s) }
-
-	write("%PDF-1.4\n%\xE2\xE3\xCF\xD3\n")
-
-	offsets := make([]int, 0, 6)
-	offsets = append(offsets, 0) // object 0 placeholder
-
-	// obj 1
-	offsets = append(offsets, out.Len())
-	write("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n")
-
-	// obj 2
-	offsets = append(offsets, out.Len())
-	write("2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n")
-
-	// obj 3 (page)
-	offsets = append(offsets, out.Len())
-	write("3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] ")
-	write("/Resources << /Font << /F1 4 0 R >> >> ")
-	write("/Contents 5 0 R >>\nendobj\n")
-
-	// obj 4 (font)
-	offsets = append(offsets, out.Len())
-	write("4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n")
-
-	// obj 5 (content stream)
-	offsets = append(offsets, out.Len())
-	write("5 0 obj\n<< /Length ")
-	write(strconv.Itoa(len(contentBytes)))
-	write(" >>\nstream\n")
-	out.Write(contentBytes)
-	write("\nendstream\nendobj\n")
-
-	// xref
-	xrefPos := out.Len()
-	write("xref\n0 6\n")
-	write("0000000000 65535 f \n")
-	for i := 1; i <= 5; i++ {
-		write(fmt.Sprintf("%010d 00000 n \n", offsets[i]))
+	if err := pdf.Output(&out); err != nil {
+		return nil, err
 	}
-
-	// trailer
-	write("trailer\n<< /Size 6 /Root 1 0 R >>\n")
-	write("startxref\n")
-	write(strconv.Itoa(xrefPos))
-	write("\n%%EOF\n")
-
 	return out.Bytes(), nil
-}
-
-func escapePDFText(s string) string {
-	// Escape backslash and parentheses for PDF literal strings.
-	s = strings.ReplaceAll(s, "\\", "\\\\")
-	s = strings.ReplaceAll(s, "(", "\\(")
-	s = strings.ReplaceAll(s, ")", "\\)")
-	// Keep it simple: replace CR/LF with space
-	s = strings.ReplaceAll(s, "\r", " ")
-	s = strings.ReplaceAll(s, "\n", " ")
-	return s
 }
 
 // ---- content builders ----
@@ -405,8 +343,7 @@ func buildPALines(docUID string, version int, seq int, isUpdate bool) []string {
 		fmt.Sprintf("Versione documento: %d", version),
 		fmt.Sprintf("Data/ora emissione (UTC): %s", now.Format(time.RFC3339)),
 		"",
-		fmt.Sprintf("Premesso che il presente atto digitale n. %02d è stato redatto ai sensi delle disposizioni vigenti,", seq),
-		"si dispone la registrazione e conservazione dell'atto nei sistemi informativi dell'Ente.",
+		fmt.Sprintf("Premesso che il presente atto digitale n. %02d è stato redatto ai sensi delle disposizioni vigenti, si dispone la registrazione e conservazione dell'atto nei sistemi informativi dell'Ente.", seq),
 		"",
 		"Il documento è prodotto in formato elettronico e sottoposto a procedura di notarizzazione su registro di trasparenza.",
 		"",
