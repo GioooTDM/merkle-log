@@ -54,7 +54,7 @@
           <span class="label">Indice Registro (Log Index)</span>
           <span class="value value-mono" id="docIndex">...</span>
         </div>
-        <div class="info-box">
+        <div class="info-box" style="grid-column: 1 / -1;">
           <span class="label">Hash del Documento (SHA-256)</span>
           <span class="value value-mono" id="docHash">...</span>
         </div>
@@ -66,6 +66,7 @@
       
       <div style="margin-top: 25px; text-align: center;">
         <a href="#" id="btnVerify" class="btn" style="text-decoration: none; display: inline-block;">Verifica Merkle Proof per questa Versione</a>
+        <button id="btnDownloadEntry" class="btn" type="button" style="margin-left: 10px;" disabled>Scarica Entry JSON (raw)</button>
       </div>
     </section>
 
@@ -111,6 +112,40 @@
     return (v === undefined || v === null || v === "") ? fallback : String(v);
   }
 
+  function formatDate(s) {
+    if (!s) return "-";
+
+    const d = new Date(s);
+    if (isNaN(d.getTime())) return s; // fallback se formato strano
+
+    const pad = (n) => n.toString().padStart(2, "0");
+
+    const year  = d.getFullYear();
+    const month = pad(d.getMonth() + 1);
+    const day   = pad(d.getDate());
+    const hours = pad(d.getHours());
+    const mins  = pad(d.getMinutes());
+    const secs  = pad(d.getSeconds());
+
+    return `${year}-${month}-${day} ${hours}:${mins}:${secs}`;
+  }
+
+  function setupDownloadEntry(rawString, index) {
+    const btn = document.getElementById('btnDownloadEntry');
+    btn.disabled = false;
+    btn.onclick = () => {
+      const blob = new Blob([rawString], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `entry_${index}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    };
+  }
+
   function parseEvent(raw) {
     const ev = JSON.parse(raw);
 
@@ -120,11 +155,13 @@
     const event_type = (ev.event_type || "").toUpperCase();
     const doc_version = Number(ev.doc_version || 0);
 
-    const issuer = ev.issuer?.name
-      ? `${ev.issuer.name}${ev.issuer?.entity_id ? ` (${ev.issuer.entity_id})` : ""}`
-      : safeStr(ev.issuer?.entity_id);
+    // const issuer = ev.issuer?.name
+    //   ? `${ev.issuer.name}${ev.issuer?.entity_id ? ` (${ev.issuer.entity_id})` : ""}`
+    //   : safeStr(ev.issuer?.entity_id);
 
-    const date = safeStr(ev.recorded_at || ev.issued_at);
+    const issuer = safeStr(ev.issuer?.name);
+
+    const date = formatDate(ev.recorded_at || ev.issued_at);
     const title = safeStr(ev.title || `${event_type || "EVENTO"} — ${doc_uid}`);
     const hash = normalizeHex(ev.payload_hash?.value);
 
@@ -246,6 +283,7 @@
     document.getElementById('docHash').innerText = currentDoc.hash || "-";
     document.getElementById('docNotes').innerText = currentDoc.notes || "-";
     document.getElementById('btnVerify').href = `verify.html?index=${currentDoc.index}`;
+    setupDownloadEntry(currentDoc.raw || currentRaw, currentDoc.index);
 
     // Stato validità: versione più recente = ultima nell'ordine
     const latestVersion = ordered[ordered.length - 1];
