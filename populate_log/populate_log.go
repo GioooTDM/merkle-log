@@ -1,7 +1,5 @@
 // go run populate_log.go -url http://localhost:2025/add -out ./seed_data
 
-// TODO: il JSON inviato al server non è in formato canonico.
-
 package main
 
 import (
@@ -22,6 +20,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	jsoncanonicalizer "github.com/cyberphone/json-canonicalization/go/src/webpki.org/jsoncanonicalizer"
 )
 
 type PayloadHash struct {
@@ -265,7 +265,7 @@ func main() {
 // ---- HTTP /add ----
 
 func postEvent(ctx context.Context, client *http.Client, url string, ev NotaryEvent) uint64 {
-	body := mustJSON(ev)
+	body := mustCanonicalJSON(ev)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	must(err)
@@ -430,9 +430,25 @@ func mustJSON(v any) []byte {
 	return b
 }
 
+func mustCanonicalJSON(v any) []byte {
+	b, err := canonicalJSON(v)
+	must(err)
+	return b
+}
+
+// canonicalJSON rende il payload deterministico:
+// applica JSON Canonicalization Scheme (JCS / RFC 8785).
+func canonicalJSON(v any) ([]byte, error) {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	return jsoncanonicalizer.Transform(raw)
+}
+
 func writeJSON(path string, v any) error {
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, mustJSON(v), 0o644); err != nil {
+	if err := os.WriteFile(tmp, mustCanonicalJSON(v), 0o644); err != nil {
 		return err
 	}
 	return os.Rename(tmp, path)
