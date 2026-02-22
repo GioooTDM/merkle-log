@@ -79,11 +79,11 @@
         <button id="btnMock" class="btn-info">✨ Genera Dati Test</button>
         <button id="btnBuild" class="btn-primary">1. Genera JSON</button>
         <button id="btnSend" class="btn-secondary" disabled>2. Invia a /add</button>
-        <button id="btnDownload" class="btn-outline" disabled>Scarica JSON</button>
+        <button id="btnDownload" class="btn-outline" disabled>Scarica JSON notarizzato</button>
       </div>
 
       <p class="muted">
-        <strong>Nota:</strong> Il sistema calcola l'hash SHA-256 del file. Il limite per il payload JSON è di 2KB.
+        <strong>Nota:</strong> Il client invia i campi dominio; il server aggiunge <code>event_id</code> e <code>recorded_at</code>, canonicalizza e notarizza.  Il limite per il payload JSON è di 2KB.
       </p>
 
       <div id="status"></div>
@@ -91,12 +91,12 @@
 
     <div class="output-container">
         <section>
-            <h3>JSON Canonicalizzato</h3>
+            <h3>Richiesta /add</h3>
             <pre id="out"><code>(in attesa di generazione...)</code></pre>
         </section>
 
         <section>
-            <h3>Risposta Server</h3>
+            <h3>Risposta /add (index + JSON notarizzato)</h3>
             <pre id="resp"><code>(nessuna risposta)</code></pre>
         </section>
     </div>

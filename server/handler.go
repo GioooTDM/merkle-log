@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/transparency-dev/tessera"
 	"github.com/transparency-dev/tessera/api"
@@ -46,36 +47,17 @@ func (h *NotaryHandler) AddEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 1. Estrazione metadati dal JSON
-	var event struct {
-		DocUID      string `json:"doc_uid"`
-		EventID     string `json:"event_id"`
-		PayloadHash struct {
-			Value string `json:"value"`
-		} `json:"payload_hash"`
-	}
-	if err := json.Unmarshal(body, &event); err != nil {
-		http.Error(w, "Invalid JSON structure", http.StatusBadRequest)
-		return
-	}
-
-	// Validazione minima
-	if event.DocUID == "" || event.EventID == "" {
-		http.Error(w, "Missing required fields: doc_uid or event_id", http.StatusBadRequest)
-		return
-	}
-
-	docHash, err := parsePayloadHash(event.PayloadHash.Value)
+	parsed, canonicalBody, err := prepareAddEventForNotarization(body, time.Now().UTC())
 	if err != nil {
-		http.Error(w, "Invalid payload_hash.value", http.StatusBadRequest)
+		http.Error(w, "Invalid add payload: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	leafHash := hashBytes(body)
+	leafHash := hashBytes(canonicalBody)
 
 	// TODO: queste operazioni sono bloccanti per il server? Può gestire più richieste parallelamente?
 	// 2. Append al Merkle Log (operazione asincrona che restituisce un future)
-	future := h.appender.Add(r.Context(), tessera.NewEntry(body))
+	future := h.appender.Add(r.Context(), tessera.NewEntry(canonicalBody))
 	idx, err := future() // Chiamiamo il future per attendere l'effettivo inserimento e ottenere l'indice
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -83,14 +65,16 @@ func (h *NotaryHandler) AddEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 3. Indicizzazione asincrona (opzionale) o sincrona
-	if err := h.indexer.AddEntry(event.DocUID, event.EventID, docHash, leafHash, idx.Index); err != nil {
-		log.Printf("Indexing error: %v", err)
+	if err := h.indexer.AddEntry(parsed.DocUID, parsed.EventID, parsed.DocHash, leafHash, idx.Index); err != nil {
+		log.Printf("indexing error for event_id=%s doc_uid=%s index=%d: %v", parsed.EventID, parsed.DocUID, idx.Index, err)
 		// Non blocchiamo la risposta se il log è ok ma l'indice fallisce,
 		// ma in produzione andrebbe gestito meglio
 	}
 
-	w.Header().Set("Content-Type", "text/plain")
-	fmt.Fprintf(w, "%d\n", idx.Index)
+	jsonResponse(w, map[string]any{
+		"log_index":      idx.Index,
+		"notarized_json": json.RawMessage(canonicalBody),
+	})
 }
 
 // TODO: attenzione, ci potrebbero essere più eventi notarizzati con lo stesso doc hash. Lo stesso documento può essere notarizzato più volte in contesti diversi.
@@ -375,19 +359,6 @@ func (h *NotaryHandler) GetEntriesByDocUID(w http.ResponseWriter, r *http.Reques
 }
 
 // Helpers
-func parsePayloadHash(v string) (string, error) {
-	s := strings.ToLower(strings.TrimSpace(v))
-	s = strings.TrimPrefix(s, "hex:")
-	if s == "" {
-		return "", nil
-	}
-	raw, err := hex.DecodeString(s)
-	if err != nil || len(raw) != sha256.Size {
-		return "", fmt.Errorf("invalid sha-256 hex")
-	}
-	return s, nil
-}
-
 func parseIndexFromPath(path, prefix string) (uint64, error) {
 	idxStr := strings.Trim(strings.TrimPrefix(path, prefix), "/")
 	if idxStr == "" {
