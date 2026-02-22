@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/transparency-dev/tessera"
@@ -81,9 +82,13 @@ func main() {
 func initSigner(path string) note.Signer {
 	key := os.Getenv("LOG_PRIVATE_KEY")
 	if path != "" {
-		b, _ := os.ReadFile(path)
+		b, err := os.ReadFile(path)
+		if err != nil {
+			log.Fatalf("Failed to read private key file %q: %v", path, err)
+		}
 		key = string(b)
 	}
+	key = strings.TrimSpace(key)
 	if key == "" {
 		log.Fatal("Private key missing: use --private_key=... or LOG_PRIVATE_KEY env var")
 	}

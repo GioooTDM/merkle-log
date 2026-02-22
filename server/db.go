@@ -12,49 +12,71 @@ type Indexer struct {
 	db *sql.DB
 }
 
+const createNotaryIndexTableSQL = `
+CREATE TABLE IF NOT EXISTS notary_index (
+	log_index INTEGER PRIMARY KEY,
+	doc_hash  TEXT NOT NULL,
+	leaf_hash TEXT NOT NULL,
+	doc_uid   TEXT NOT NULL,
+	event_id  TEXT NOT NULL UNIQUE
+);`
+
+var notaryIndexDDL = []string{
+	`CREATE INDEX IF NOT EXISTS idx_notary_index_doc_hash ON notary_index(doc_hash);`,
+	`CREATE INDEX IF NOT EXISTS idx_notary_index_doc_uid ON notary_index(doc_uid);`,
+	`CREATE INDEX IF NOT EXISTS idx_notary_index_leaf_hash ON notary_index(leaf_hash);`,
+}
+
 func NewIndexer(dbPath string) (*Indexer, error) {
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, err
 	}
 
-	// TODO: attenzione doc_hash è PRIMARY KEY, non si può notarizzare due volte lo stesso documento
-	// 		 una PK alternativa potrebbe essere log_index o event_id
-	query := `
-    CREATE TABLE IF NOT EXISTS notary_index (
-        doc_hash  TEXT PRIMARY KEY,
-        leaf_hash TEXT,
-        log_index INTEGER,
-		doc_uid   TEXT NOT NULL,
-		event_id  TEXT NOT NULL UNIQUE
-    );`
-
-	if _, err := db.Exec(query); err != nil {
+	if err := createNotaryIndexSchema(db); err != nil {
 		db.Close()
 		return nil, err
 	}
+
 	return &Indexer{db: db}, nil
 }
 
-// func (idx *Indexer) AddEntry(docHash, leafHash string, logIndex uint64) error {
-// 	query := `INSERT INTO notary_index (doc_hash, leaf_hash, log_index) VALUES (?, ?, ?)`
-// 	_, err := idx.db.Exec(query, docHash, leafHash, logIndex)
-// 	return err
-// }
+func createNotaryIndexSchema(db *sql.DB) error {
+	if _, err := db.Exec(createNotaryIndexTableSQL); err != nil {
+		return err
+	}
+	for _, q := range notaryIndexDDL {
+		if _, err := db.Exec(q); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 func (idx *Indexer) AddEntry(docUID, eventID, docHash, leafHash string, logIndex uint64) error {
-	// Aggiorniamo la query per includere i nuovi campi
-	query := `INSERT INTO notary_index (doc_uid, event_id, doc_hash, leaf_hash, log_index) 
-              VALUES (?, ?, ?, ?, ?)`
+	docUID = strings.TrimSpace(docUID)
+	eventID = strings.TrimSpace(eventID)
+	docHash = strings.TrimSpace(docHash)
+	leafHash = strings.TrimSpace(leafHash)
 
-	_, err := idx.db.Exec(query, docUID, eventID, docHash, leafHash, logIndex)
+	query := `INSERT INTO notary_index (log_index, doc_uid, event_id, doc_hash, leaf_hash)
+	          VALUES (?, ?, ?, ?, ?)`
+
+	_, err := idx.db.Exec(query, logIndex, docUID, eventID, docHash, leafHash)
 	return err
 }
 
+// TODO: questa funzione restituisce solo l'ultimo log_index corrispondente al doc_hash cercato. Lo stesso doc_hash può comparire in diverse log_index
 func (idx *Indexer) GetByDocHash(docHash string) (string, uint64, error) {
 	var leafHash string
 	var logIndex uint64
-	query := `SELECT leaf_hash, log_index FROM notary_index WHERE doc_hash = ?`
+	query := `
+		SELECT leaf_hash, log_index
+		FROM notary_index
+		WHERE doc_hash = ?
+		ORDER BY log_index DESC
+		LIMIT 1
+	`
 	err := idx.db.QueryRow(query, docHash).Scan(&leafHash, &logIndex)
 	return leafHash, logIndex, err
 }

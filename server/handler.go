@@ -65,7 +65,12 @@ func (h *NotaryHandler) AddEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	docHash := strings.TrimPrefix(event.PayloadHash.Value, "hex:")
+	docHash, err := parsePayloadHash(event.PayloadHash.Value)
+	if err != nil {
+		http.Error(w, "Invalid payload_hash.value", http.StatusBadRequest)
+		return
+	}
+
 	leafHash := hashBytes(body)
 
 	// TODO: queste operazioni sono bloccanti per il server? Può gestire più richieste parallelamente?
@@ -90,6 +95,11 @@ func (h *NotaryHandler) AddEvent(w http.ResponseWriter, r *http.Request) {
 
 // TODO: attenzione, ci potrebbero essere più eventi notarizzati con lo stesso doc hash. Lo stesso documento può essere notarizzato più volte in contesti diversi.
 func (h *NotaryHandler) GetByDoc(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed. Only GET", http.StatusMethodNotAllowed)
+		return
+	}
+
 	hash := r.URL.Query().Get("hash")
 
 	if hash == "" {
@@ -110,6 +120,11 @@ func (h *NotaryHandler) GetByDoc(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *NotaryHandler) GetByLeaf(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed. Only GET", http.StatusMethodNotAllowed)
+		return
+	}
+
 	hash := r.URL.Query().Get("hash")
 
 	if hash == "" {
@@ -129,92 +144,48 @@ func (h *NotaryHandler) GetByLeaf(w http.ResponseWriter, r *http.Request) {
 const EntryBundleWidth uint64 = 256
 
 func (h *NotaryHandler) GetEntry(w http.ResponseWriter, r *http.Request) {
-	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
-	if len(parts) < 2 {
-		http.Error(w, "Missing index", http.StatusBadRequest)
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed. Only GET", http.StatusMethodNotAllowed)
 		return
 	}
-	idx, err := strconv.ParseUint(parts[1], 10, 64)
+
+	idx, err := parseIndexFromPath(r.URL.Path, "/get-entry/")
 	if err != nil {
-		http.Error(w, "Invalid index", http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	// 1) Usa la checkpoint (pubblicata) per sapere size e gestire il "partial"
-	size, err := h.publishedSize(r.Context())
+	entry, err := h.readEntryByIndex(r.Context(), idx)
 	if err != nil {
-		http.Error(w, "Checkpoint not available", http.StatusServiceUnavailable)
-		return
-	}
-	if idx >= size {
-		http.Error(w, "Entry not found", http.StatusNotFound)
-		return
-	}
-
-	// 2) Coordinate del bundle
-	bundleIdx := idx / EntryBundleWidth
-	offset := idx % EntryBundleWidth
-
-	// p = partial size (0 se bundle pieno, 1..255 se parziale)
-	partial := layout.PartialTileSize(0 /*level*/, bundleIdx, size)
-
-	raw, err := h.reader.ReadEntryBundle(r.Context(), bundleIdx, partial)
-	if err != nil {
-		http.Error(w, "Entry bundle not found", http.StatusNotFound)
-		return
-	}
-
-	var eb api.EntryBundle
-	if err := eb.UnmarshalText(raw); err != nil {
-		http.Error(w, "Corrupt entry bundle", http.StatusInternalServerError)
-		return
-	}
-	if int(offset) >= len(eb.Entries) {
-		http.Error(w, "Entry not found", http.StatusNotFound)
+		if errors.Is(err, os.ErrNotExist) {
+			http.Error(w, "Entry not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "Failed to read entry", http.StatusInternalServerError)
 		return
 	}
 
 	// Se le tue entry sono JSON, ok. Altrimenti usa application/octet-stream.
 	w.Header().Set("Content-Type", "application/json")
-	_, _ = w.Write(eb.Entries[offset])
-}
-
-func (h *NotaryHandler) publishedSize(ctx context.Context) (uint64, error) {
-	cpRaw, err := h.reader.ReadCheckpoint(ctx)
-	if err != nil {
-		return 0, err
-	}
-
-	// Variante minimale: NON verifica firme, ma ti estrae Size.
-	// Se vuoi verificare, usa log.ParseCheckpoint con i verifier (raccomandato lato client pubblico).
-	var cp formatsLog.Checkpoint
-	if _, err := cp.Unmarshal(cpRaw); err != nil {
-		return 0, err
-	}
-	return cp.Size, nil
+	_, _ = w.Write(entry)
 }
 
 func (h *NotaryHandler) GetProof(w http.ResponseWriter, r *http.Request) {
-	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
-	if len(parts) < 2 {
-		http.Error(w, "Missing index", http.StatusBadRequest)
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed. Only GET", http.StatusMethodNotAllowed)
 		return
 	}
-	idx, err := strconv.ParseUint(parts[1], 10, 64)
+
+	idx, err := parseIndexFromPath(r.URL.Path, "/get-proof/")
 	if err != nil {
-		http.Error(w, "Invalid index", http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	// Checkpoint pubblicato -> tree size “commit-tato”
-	cpRaw, err := h.reader.ReadCheckpoint(r.Context())
+	cpRaw, cp, err := h.readPublishedCheckpoint(r.Context())
 	if err != nil {
 		http.Error(w, "Checkpoint not available", http.StatusServiceUnavailable)
-		return
-	}
-	var cp formatsLog.Checkpoint
-	if _, err := cp.Unmarshal(cpRaw); err != nil {
-		http.Error(w, "Bad checkpoint", http.StatusInternalServerError)
 		return
 	}
 
@@ -303,6 +274,14 @@ func (h *NotaryHandler) GetIndexesByDocUID(w http.ResponseWriter, r *http.Reques
 	})
 }
 
+func (h *NotaryHandler) publishedSize(ctx context.Context) (uint64, error) {
+	_, cp, err := h.readPublishedCheckpoint(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return cp.Size, nil
+}
+
 func (h *NotaryHandler) readEntryByIndex(ctx context.Context, idx uint64) ([]byte, error) {
 	// 1) size pubblicato
 	size, err := h.publishedSize(ctx)
@@ -317,9 +296,14 @@ func (h *NotaryHandler) readEntryByIndex(ctx context.Context, idx uint64) ([]byt
 	bundleIdx := idx / EntryBundleWidth
 	offset := idx % EntryBundleWidth
 
+	// p = partial size (0 se bundle pieno, 1..255 se parziale)
 	partial := layout.PartialTileSize(0 /*level*/, bundleIdx, size)
 
 	raw, err := h.reader.ReadEntryBundle(ctx, bundleIdx, partial)
+	if err != nil && partial != 0 {
+		// Fallback al bundle pieno: alcuni store non servono i bundle parziali.
+		raw, err = h.reader.ReadEntryBundle(ctx, bundleIdx, 0)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -391,6 +375,43 @@ func (h *NotaryHandler) GetEntriesByDocUID(w http.ResponseWriter, r *http.Reques
 }
 
 // Helpers
+func parsePayloadHash(v string) (string, error) {
+	s := strings.ToLower(strings.TrimSpace(v))
+	s = strings.TrimPrefix(s, "hex:")
+	if s == "" {
+		return "", nil
+	}
+	raw, err := hex.DecodeString(s)
+	if err != nil || len(raw) != sha256.Size {
+		return "", fmt.Errorf("invalid sha-256 hex")
+	}
+	return s, nil
+}
+
+func parseIndexFromPath(path, prefix string) (uint64, error) {
+	idxStr := strings.Trim(strings.TrimPrefix(path, prefix), "/")
+	if idxStr == "" {
+		return 0, fmt.Errorf("missing index")
+	}
+	idx, err := strconv.ParseUint(idxStr, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid index")
+	}
+	return idx, nil
+}
+
+func (h *NotaryHandler) readPublishedCheckpoint(ctx context.Context) ([]byte, formatsLog.Checkpoint, error) {
+	cpRaw, err := h.reader.ReadCheckpoint(ctx)
+	if err != nil {
+		return nil, formatsLog.Checkpoint{}, err
+	}
+	var cp formatsLog.Checkpoint
+	if _, err := cp.Unmarshal(cpRaw); err != nil {
+		return nil, formatsLog.Checkpoint{}, err
+	}
+	return cpRaw, cp, nil
+}
+
 func hashBytes(data []byte) string {
 	h := sha256.Sum256(data)
 	return hex.EncodeToString(h[:])
@@ -398,5 +419,7 @@ func hashBytes(data []byte) string {
 
 func jsonResponse(w http.ResponseWriter, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(data)
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		log.Printf("jsonResponse encode error: %v", err)
+	}
 }

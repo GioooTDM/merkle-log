@@ -129,11 +129,10 @@ function extractEventPayloadHash(eventJson) {
 }
 
 function pickMeta(eventJson) {
-  // Adatta liberamente al tuo schema
   return {
     docUid: eventJson?.doc_uid ?? eventJson?.document_id ?? "-",
-    version: eventJson?.version ?? "-",
-    date: eventJson?.time ?? eventJson?.date ?? eventJson?.timestamp ?? "-",
+    version: eventJson?.doc_version ?? eventJson?.version ?? "-",
+    date: eventJson?.recorded_at ?? eventJson?.issued_at ?? eventJson?.time ?? eventJson?.date ?? eventJson?.timestamp ?? "-",
   };
 }
 
@@ -147,7 +146,7 @@ $("btnVerify").addEventListener("click", async () => {
     const fProof = $("verifyProof").files?.[0];
 
     if (!fDoc || !fEvent || !fProof) {
-      setStatus("status-fail", "Carica documento, evento e proof.");
+      setStatus("status-error", "Carica documento, evento e proof.");
       return;
     }
 
@@ -212,17 +211,17 @@ $("btnVerify").addEventListener("click", async () => {
     );
 
     if (docOk && proofOk) {
-      setStatus("status-ok", "✅ Verifica OK: documento coerente e proof valida.");
+      setStatus("status-success", "✅ Verifica OK: documento coerente e proof valida.");
     } else if (!docOk && proofOk) {
-      setStatus("status-fail", "❌ Proof valida, ma il documento NON corrisponde all’hash nell’evento.");
+      setStatus("status-error", "❌ Proof valida, ma il documento NON corrisponde all’hash nell’evento.");
     } else if (docOk && !proofOk) {
-      setStatus("status-fail", "❌ Documento OK, ma proof NON valida (root hash mismatch).");
+      setStatus("status-error", "❌ Documento OK, ma proof NON valida (root hash mismatch).");
     } else {
-      setStatus("status-fail", "❌ Documento e proof NON validi.");
+      setStatus("status-error", "❌ Documento e proof NON validi.");
     }
   } catch (e) {
     console.error(e);
-    setStatus("status-fail", `Errore: ${e?.message ?? String(e)}`);
+    setStatus("status-error", `Errore: ${e?.message ?? String(e)}`);
     detailsEl.textContent = String(e?.stack ?? e);
   }
 });
