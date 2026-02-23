@@ -5,11 +5,9 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -17,11 +15,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"time"
 
-	jsoncanonicalizer "github.com/cyberphone/json-canonicalization/go/src/webpki.org/jsoncanonicalizer"
 	"github.com/go-pdf/fpdf"
 )
 
@@ -47,6 +42,21 @@ type NotaryEvent struct {
 	Issuer        Issuer      `json:"issuer"`
 	IssuedAt      string      `json:"issued_at"`
 	RecordedAt    string      `json:"recorded_at"`
+	Title         string      `json:"title,omitempty"`
+	Description   string      `json:"description,omitempty"`
+	Notes         string      `json:"notes,omitempty"`
+}
+
+type AddEventRequest struct {
+	Schema        string      `json:"schema"`
+	EventType     string      `json:"event_type"` // CREATE, UPDATE
+	DocUID        string      `json:"doc_uid"`
+	DocVersion    int         `json:"doc_version"`
+	PrevEventID   *string     `json:"prev_event_id,omitempty"`
+	PrevEventLeaf *uint64     `json:"prev_event_leaf,omitempty"`
+	PayloadHash   PayloadHash `json:"payload_hash"`
+	Issuer        Issuer      `json:"issuer"`
+	IssuedAt      string      `json:"issued_at"`
 	Title         string      `json:"title,omitempty"`
 	Description   string      `json:"description,omitempty"`
 	Notes         string      `json:"notes,omitempty"`
@@ -102,7 +112,7 @@ func main() {
 	summary := make([]SummaryRow, 0, N+5)
 
 	for i := 1; i <= N; i++ {
-		docUID := fmt.Sprintf("PROT/2026/%05d", 10000+i) // esempio di doc_uid “PA style”
+		docUID := fmt.Sprintf("PROT/2026/%05d", 10000+i)
 		version := 1
 
 		pdfName := fmt.Sprintf("doc_%02d_v%d.pdf", i, version)
@@ -116,9 +126,8 @@ func main() {
 		pdfHash := sha256.Sum256(pdfBytes)
 		pdfHashHex := hex.EncodeToString(pdfHash[:])
 
-		ev := NotaryEvent{
+		reqEv := AddEventRequest{
 			Schema:     "pa-notary-event@1",
-			EventID:    uuidV4(),
 			EventType:  "CREATE",
 			DocUID:     docUID,
 			DocVersion: 1,
@@ -128,22 +137,21 @@ func main() {
 			},
 			Issuer:      issuer,
 			IssuedAt:    time.Now().UTC().Format(time.RFC3339Nano),
-			RecordedAt:  time.Now().UTC().Format(time.RFC3339Nano),
 			Title:       "Atto amministrativo — Emissione",
 			Description: "Registrazione di un nuovo atto amministrativo in formato digitale (versione iniziale).",
 			Notes:       fmt.Sprintf("Documento di prova #%02d generato automaticamente.", i),
 		}
 
-		logIndex := postEvent(ctx, client, *baseURL, ev)
+		logIndex, storedEv := postEvent(ctx, client, *baseURL, reqEv)
 
-		// salva evento JSON raw (lo salviamo noi, non è il raw “wire”, ma va bene per test)
+		// Salva l'evento effettivamente notarizzato dal server.
 		evPath := filepath.Join(absOut, "event", fmt.Sprintf("event_%02d_v%d.json", i, version))
-		must(writeJSON(evPath, ev))
+		must(writeJSON(evPath, storedEv))
 
 		states = append(states, DocState{
 			DocUID:        docUID,
 			Version:       1,
-			PrevEventID:   ev.EventID,
+			PrevEventID:   storedEv.EventID,
 			PrevEventLeaf: logIndex,
 			OriginalPDF:   pdfPath,
 		})
@@ -151,8 +159,8 @@ func main() {
 		summary = append(summary, SummaryRow{
 			DocUID:        docUID,
 			Version:       1,
-			EventID:       ev.EventID,
-			EventType:     ev.EventType,
+			EventID:       storedEv.EventID,
+			EventType:     storedEv.EventType,
 			LogIndex:      logIndex,
 			PDFPath:       pdfPath,
 			EventJSONPath: evPath,
@@ -202,9 +210,8 @@ func main() {
 			prevID := st.PrevEventID
 			prevLeaf := st.PrevEventLeaf
 
-			ev := NotaryEvent{
+			reqEv := AddEventRequest{
 				Schema:        "pa-notary-event@1",
-				EventID:       uuidV4(),
 				EventType:     "UPDATE",
 				DocUID:        st.DocUID,
 				DocVersion:    newVersion,
@@ -216,22 +223,21 @@ func main() {
 				},
 				Issuer:      issuer,
 				IssuedAt:    time.Now().UTC().Format(time.RFC3339Nano),
-				RecordedAt:  time.Now().UTC().Format(time.RFC3339Nano),
 				Title:       "Atto amministrativo — Aggiornamento",
 				Description: fmt.Sprintf("Aggiornamento del documento con modifiche minori (update %d/%d).", u, numUpdates),
 				Notes:       "Generato automaticamente per testare catena UPDATE/prev.",
 			}
 
-			logIndex := postEvent(ctx, client, *baseURL, ev)
+			logIndex, storedEv := postEvent(ctx, client, *baseURL, reqEv)
 
 			evPath := filepath.Join(absOut, "event", fmt.Sprintf("event_%02d_v%d_update_%d.json", idx+1, newVersion, u))
-			must(writeJSON(evPath, ev))
+			must(writeJSON(evPath, storedEv))
 
 			// aggiorna stato per permettere update successivi (catena)
 			st = DocState{
 				DocUID:        st.DocUID,
 				Version:       newVersion,
-				PrevEventID:   ev.EventID,
+				PrevEventID:   storedEv.EventID,
 				PrevEventLeaf: logIndex,
 				OriginalPDF:   st.OriginalPDF,
 			}
@@ -240,8 +246,8 @@ func main() {
 			summary = append(summary, SummaryRow{
 				DocUID:        st.DocUID,
 				Version:       newVersion,
-				EventID:       ev.EventID,
-				EventType:     ev.EventType,
+				EventID:       storedEv.EventID,
+				EventType:     storedEv.EventType,
 				LogIndex:      logIndex,
 				PDFPath:       pdfPath,
 				EventJSONPath: evPath,
@@ -265,12 +271,14 @@ func main() {
 
 // ---- HTTP /add ----
 
-func postEvent(ctx context.Context, client *http.Client, url string, ev NotaryEvent) uint64 {
-	body := mustCanonicalJSON(ev)
+func postEvent(ctx context.Context, client *http.Client, url string, ev AddEventRequest) (uint64, NotaryEvent) {
+	body, err := json.Marshal(ev)
+	must(err)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	must(err)
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
 
 	res, err := client.Do(req)
 	must(err)
@@ -282,13 +290,23 @@ func postEvent(ctx context.Context, client *http.Client, url string, ev NotaryEv
 		panic(fmt.Errorf("POST %s failed: status=%d body=%s", url, res.StatusCode, string(respBody)))
 	}
 
-	// server returns log_index as plain text (e.g. "123\n")
-	s := strings.TrimSpace(string(respBody))
-	n, err := strconv.ParseUint(s, 10, 64)
-	if err != nil {
-		panic(fmt.Errorf("cannot parse log_index from response %q: %w", s, err))
+	var addResp struct {
+		LogIndex     uint64          `json:"log_index"`
+		NotarizedRaw json.RawMessage `json:"notarized_json"`
 	}
-	return n
+	if err := json.Unmarshal(respBody, &addResp); err != nil {
+		panic(fmt.Errorf("cannot parse /add JSON response %q: %w", string(respBody), err))
+	}
+	if len(addResp.NotarizedRaw) == 0 {
+		panic(fmt.Errorf("invalid /add response: empty notarized_json"))
+	}
+
+	var storedEv NotaryEvent
+	if err := json.Unmarshal(addResp.NotarizedRaw, &storedEv); err != nil {
+		panic(fmt.Errorf("cannot decode notarized_json %q: %w", string(addResp.NotarizedRaw), err))
+	}
+
+	return addResp.LogIndex, storedEv
 }
 
 // ---- PDF generator ----
@@ -367,50 +385,10 @@ func mustJSON(v any) []byte {
 	return b
 }
 
-func mustCanonicalJSON(v any) []byte {
-	b, err := canonicalJSON(v)
-	must(err)
-	return b
-}
-
-// canonicalJSON rende il payload deterministico:
-// applica JSON Canonicalization Scheme (JCS / RFC 8785).
-func canonicalJSON(v any) ([]byte, error) {
-	raw, err := json.Marshal(v)
-	if err != nil {
-		return nil, err
-	}
-	return jsoncanonicalizer.Transform(raw)
-}
-
 func writeJSON(path string, v any) error {
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, mustCanonicalJSON(v), 0o644); err != nil {
+	if err := os.WriteFile(tmp, mustJSON(v), 0o644); err != nil {
 		return err
 	}
 	return os.Rename(tmp, path)
 }
-
-func uuidV4() string {
-	// RFC 4122 UUID v4
-	var b [16]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		panic(err)
-	}
-	b[6] = (b[6] & 0x0f) | 0x40 // version 4
-	b[8] = (b[8] & 0x3f) | 0x80 // variant 10
-	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
-		b[0:4],
-		b[4:6],
-		b[6:8],
-		b[8:10],
-		b[10:16],
-	)
-}
-
-// fmt with byte slices: helper via Sprintf will print %!x([]uint8=...).
-// Convert segments manually:
-// func (b []byte) String() string { return hex.EncodeToString(b) }
-
-// Silence unused import if you later remove something:
-var _ = errors.New
