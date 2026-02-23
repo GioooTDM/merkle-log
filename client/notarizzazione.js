@@ -95,35 +95,6 @@ async function sendNotarizationRequest(payload) {
 }
 
 // ===== JSON & Crypto Logic =====
-function normalizeForStableJSON(v) {
-  if (v === null) return null;
-
-  const t = typeof v;
-  if (t === "string" || t === "boolean") return v;
-  if (t === "number") {
-    if (!Number.isFinite(v)) throw new Error("Numeri non finiti non ammessi");
-    if (!Number.isInteger(v)) throw new Error("Numeri non interi non ammessi");
-    if (!Number.isSafeInteger(v)) throw new Error("Intero fuori range JS (non safe integer)");
-    return v;
-  }
-
-  if (Array.isArray(v)) return v.map(normalizeForStableJSON);
-
-  if (t === "object") {
-    const out = {};
-    const keys = Object.keys(v).filter((k) => v[k] !== undefined);
-    keys.sort();
-    for (const k of keys) out[k] = normalizeForStableJSON(v[k]);
-    return out;
-  }
-
-  throw new Error(`Tipo non supportato nel JSON: ${t}`);
-}
-
-function stableJSONStringify(value) {
-  return JSON.stringify(normalizeForStableJSON(value));
-}
-
 async function sha256HexOfFile(file) {
   const ab = await file.arrayBuffer();
   const digest = await crypto.subtle.digest("SHA-256", ab);
@@ -135,8 +106,17 @@ function buildEventObject(data, payloadHex) {
   requireNonEmpty("issuer.entity_id", data.issuerId);
   requireNonEmpty("doc_uid", data.docUid);
   requireNonEmpty("title", data.title);
-  
-  if (!Number.isInteger(data.docVersion) || data.docVersion < 1) {
+
+  if (!Number.isFinite(data.docVersion)) {
+    throw new Error("doc_version non finito non ammesso");
+  }
+  if (!Number.isInteger(data.docVersion)) {
+    throw new Error("doc_version deve essere un intero");
+  }
+  if (!Number.isSafeInteger(data.docVersion)) {
+    throw new Error("doc_version fuori range JS (non safe integer)");
+  }
+  if (data.docVersion < 1) {
     throw new Error("doc_version deve essere un intero >= 1");
   }
 
@@ -196,7 +176,7 @@ btnBuild.addEventListener("click", async () => {
     const payloadHex = await sha256HexOfFile(file);
     const ev = buildEventObject(formData, payloadHex);
 
-    const reqJSON = stableJSONStringify(ev);
+    const reqJSON = JSON.stringify(ev);
     const size = utf8Bytes(reqJSON).length;
     if (size > MAX_JSON_BYTES) throw new Error(`JSON troppo grande: ${size} bytes (max ${MAX_JSON_BYTES})`);
 
