@@ -2,7 +2,7 @@
 const ADD_URL = "http://localhost:2025/add";
 const MAX_JSON_BYTES = 2048;
 
-// ===== DOM =====
+// ===== DOM Elements =====
 const el = (id) => document.getElementById(id);
 const fileEl = el("file");
 const issuerIdEl = el("issuerId");
@@ -23,10 +23,26 @@ const outEl = el("out");
 const respEl = el("resp");
 const statusEl = el("status");
 
+// ===== State =====
 let lastRequestJSON = null;
 let lastNotarizedJSON = null;
 
-// ===== Helpers =====
+// ===== Form Helpers =====
+function getFormData() {
+  return {
+    issuerId: issuerIdEl.value.trim(),
+    issuerName: issuerNameEl.value.trim(),
+    docUid: docUidEl.value.trim(),
+    eventType: eventTypeEl.value,
+    docVersion: Number(docVersionEl.value),
+    prevEventId: prevEventIdEl.value.trim(),
+    title: titleEl.value.trim(),
+    description: descriptionEl.value.trim(),
+    notes: notesEl.value.trim(),
+  };
+}
+
+// ===== UI & Formatting Helpers =====
 function setStatus(msg, kind = "ok") {
   statusEl.innerHTML = `<p class="${kind === "ok" ? "ok" : "err"}">${escapeHtml(msg)}</p>`;
 }
@@ -40,7 +56,6 @@ function utf8Bytes(s) {
 }
 
 function nowRFC3339Nanoish() {
-  // JS non ha nanos reali; ISO8601 con millis è ok per RFC3339 (e accettabile per il tuo parser).
   return new Date().toISOString();
 }
 
@@ -59,6 +74,27 @@ function hexFromBytes(buf) {
   return out;
 }
 
+// ===== Network Helpers =====
+async function sendNotarizationRequest(payload) {
+  const res = await fetch(ADD_URL, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "accept": "application/json",
+    },
+    body: payload,
+  });
+
+  const raw = await res.text();
+  if (!res.ok) throw new Error(`Server ${res.status}: ${raw}`);
+
+  const ct = (res.headers.get("content-type") || "").toLowerCase();
+  const isJson = ct.includes("application/json");
+
+  return { raw, isJson };
+}
+
+// ===== JSON & Crypto Logic =====
 function normalizeForStableJSON(v) {
   if (v === null) return null;
 
@@ -94,63 +130,58 @@ async function sha256HexOfFile(file) {
   return hexFromBytes(digest);
 }
 
-function buildEventObject({ payloadHex }) {
-  const issuerId = issuerIdEl.value.trim();
-  const issuerName = issuerNameEl.value.trim();
-  const docUid = docUidEl.value.trim();
-  const eventType = eventTypeEl.value;
-  const docVersion = Number(docVersionEl.value);
-  const prevEventId = prevEventIdEl.value.trim();
-  const title = titleEl.value.trim();
-  const description = descriptionEl.value.trim();
-  const notes = notesEl.value.trim();
+// ===== Business Logic =====
+function buildEventObject(data, payloadHex) {
+  requireNonEmpty("issuer.entity_id", data.issuerId);
+  requireNonEmpty("doc_uid", data.docUid);
+  requireNonEmpty("title", data.title);
+  
+  if (!Number.isInteger(data.docVersion) || data.docVersion < 1) {
+    throw new Error("doc_version deve essere un intero >= 1");
+  }
 
-  requireNonEmpty("issuer.entity_id", issuerId);
-  requireNonEmpty("doc_uid", docUid);
-  requireNonEmpty("title", title);
-  if (!Number.isInteger(docVersion) || docVersion < 1) throw new Error("doc_version deve essere un intero >= 1");
-
-  const needsPrev = eventType === "UPDATE" || eventType === "REVOKE" || eventType === "EXPIRE";
+  const needsPrev = data.eventType === "UPDATE" || data.eventType === "REVOKE" || data.eventType === "EXPIRE";
+  
   if (needsPrev) {
-    requireNonEmpty("prev_event_id", prevEventId);
-    if (!isUUIDv4(prevEventId)) throw new Error("prev_event_id deve essere UUIDv4");
-  } else if (prevEventId) {
+    requireNonEmpty("prev_event_id", data.prevEventId);
+    if (!isUUIDv4(data.prevEventId)) throw new Error("prev_event_id deve essere UUIDv4");
+  } else if (data.prevEventId) {
     throw new Error("prev_event_id non deve essere presente per CREATE");
   }
 
-  const needsPayload = eventType === "CREATE" || eventType === "UPDATE";
+  const needsPayload = data.eventType === "CREATE" || data.eventType === "UPDATE";
   const payloadHash = needsPayload ? { alg: "sha-256", value: `hex:${payloadHex}` } : undefined;
 
   if (needsPayload && (!payloadHex || payloadHex.length !== 64)) {
     throw new Error("payload_hash sha-256 hex non valido");
   }
 
-  if (eventType === "CREATE" && docVersion !== 1) {
+  if (data.eventType === "CREATE" && data.docVersion !== 1) {
     throw new Error("CREATE richiede doc_version=1");
   }
-  if (eventType === "UPDATE" && docVersion < 2) {
+  if (data.eventType === "UPDATE" && data.docVersion < 2) {
     throw new Error("UPDATE richiede doc_version>=2");
   }
 
   return {
     schema: "pa-notary-event@1",
-    event_type: eventType,
-    doc_uid: docUid,
-    doc_version: docVersion,
-    ...(needsPrev ? { prev_event_id: prevEventId } : {}),
+    event_type: data.eventType,
+    doc_uid: data.docUid,
+    doc_version: data.docVersion,
+    ...(needsPrev ? { prev_event_id: data.prevEventId } : {}),
     ...(payloadHash ? { payload_hash: payloadHash } : {}),
     issuer: {
-      entity_id: issuerId,
-      ...(issuerName ? { name: issuerName } : {}),
+      entity_id: data.issuerId,
+      ...(data.issuerName ? { name: data.issuerName } : {}),
     },
     issued_at: nowRFC3339Nanoish(),
-    title,
-    ...(description ? { description } : {}),
-    ...(notes ? { notes } : {}),
+    title: data.title,
+    ...(data.description ? { description: data.description } : {}),
+    ...(data.notes ? { notes: data.notes } : {}),
   };
 }
 
-// ===== UI actions =====
+// ===== UI Actions =====
 btnBuild.addEventListener("click", async () => {
   try {
     respEl.textContent = "(vuoto)";
@@ -161,8 +192,9 @@ btnBuild.addEventListener("click", async () => {
     const file = fileEl.files?.[0];
     if (!file) throw new Error("Seleziona un file");
 
+    const formData = getFormData();
     const payloadHex = await sha256HexOfFile(file);
-    const ev = buildEventObject({ payloadHex });
+    const ev = buildEventObject(formData, payloadHex);
 
     const reqJSON = stableJSONStringify(ev);
     const size = utf8Bytes(reqJSON).length;
@@ -188,28 +220,20 @@ btnSend.addEventListener("click", async () => {
     if (!lastRequestJSON) throw new Error("Prima genera il JSON");
     respEl.textContent = "(inviando...)";
 
-    const res = await fetch(ADD_URL, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "accept": "application/json",
-      },
-      body: lastRequestJSON,
-    });
+    const { raw, isJson } = await sendNotarizationRequest(lastRequestJSON);
 
-    const raw = await res.text();
-    if (!res.ok) throw new Error(`Server ${res.status}: ${raw}`);
-
-    const ct = (res.headers.get("content-type") || "").toLowerCase();
-    if (ct.includes("application/json")) {
+    if (isJson) {
       const parsed = JSON.parse(raw);
       respEl.textContent = JSON.stringify(parsed, null, 2);
+      
       if (parsed?.notarized_json === undefined) {
         throw new Error("Risposta /add senza notarized_json");
       }
+      
       lastNotarizedJSON = typeof parsed.notarized_json === "string"
         ? parsed.notarized_json
         : JSON.stringify(parsed.notarized_json);
+      
       btnDownload.disabled = false;
 
       const idx = parsed?.log_index;
