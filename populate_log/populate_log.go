@@ -1,5 +1,7 @@
 // go run populate_log.go -url http://localhost:2025/add -out ./seed_data
 
+// TODO: estrarre magic strings
+
 package main
 
 import (
