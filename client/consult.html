@@ -152,6 +152,55 @@
       return res.json();
     }
 
+    function rowFromEvent(ev, index, fallbackUID = "") {
+      return {
+        index,
+        date: formatDate(ev.recorded_at || ev.issued_at),
+        issuer: parseIssuer(ev.issuer),
+        uid: safeStr(ev.doc_uid || fallbackUID),
+        version: safeStr(ev.doc_version, "?"),
+        title: safeStr(ev.title || ev.event_type || "Evento"),
+        event_id: safeStr(ev.event_id),
+        event_type: safeStr(ev.event_type),
+        payload_hash: normalizeHex(ev?.payload_hash?.value),
+      };
+    }
+
+    async function fetchCheckpointSize() {
+      const res = await fetch(`${API_BASE}/checkpoint`, { cache: "no-store" });
+      if (!res.ok) {
+        const t = await res.text().catch(() => "");
+        throw new Error(`HTTP ${res.status}: ${t || "checkpoint non disponibile"}`);
+      }
+
+      const text = await res.text();
+      const lines = text.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+      const sizeLine = lines.find((line) => /^\d+$/.test(line));
+      if (!sizeLine) throw new Error("Formato checkpoint non riconosciuto");
+      return Number(sizeLine);
+    }
+
+    async function fetchEntryByIndex(index) {
+      const res = await fetch(`${API_BASE}/get-entry/${index}`);
+      if (!res.ok) return null;
+      const text = await res.text();
+      try { return JSON.parse(text); } catch { return null; }
+    }
+
+    async function loadLatestNotarizedEvents(limit = 5) {
+      const size = await fetchCheckpointSize();
+      if (!Number.isFinite(size) || size <= 0) return [];
+
+      const out = [];
+
+      for (let idx = size - 1; idx >= 0 && out.length < limit; idx--) {
+        const ev = await fetchEntryByIndex(idx);
+        if (!ev || typeof ev !== "object") continue;
+        out.push(rowFromEvent(ev, idx));
+      }
+      return out;
+    }
+
     // Render tabella: si aspetta array di "row" con campi già pronti
     function renderTable(rows) {
       resultsBody.innerHTML = "";
@@ -200,18 +249,7 @@
       const rows = [];
       for (let i = 0; i < Math.min(idxs.length, parsed.length); i++) {
         const ev = parsed[i];
-        rows.push({
-          index: idxs[i],
-          date: formatDate(ev.recorded_at || ev.issued_at),
-          issuer: parseIssuer(ev.issuer),
-          uid: safeStr(ev.doc_uid || uid),
-          version: safeStr(ev.doc_version, "?"),
-          title: safeStr(ev.title || ev.event_type || "Evento"),
-          // extra utili se ti servono dopo:
-          event_id: safeStr(ev.event_id),
-          event_type: safeStr(ev.event_type),
-          payload_hash: normalizeHex(ev?.payload_hash?.value),
-        });
+        rows.push(rowFromEvent(ev, idxs[i], uid));
       }
 
       // Ordina DESC per versione (o fallback: index desc) così vedi prima l'ultima
@@ -259,6 +297,24 @@
         btnSearch.disabled = false;
       }
     });
+
+    // Caricamento iniziale: ultimi 5 eventi notarizzati.
+    (async () => {
+      try {
+        resultCount.innerText = "Caricamento ultimi eventi...";
+        const rows = await loadLatestNotarizedEvents(5);
+        renderTable(rows);
+        resultCount.innerText = rows.length > 0
+          ? `Ultimi ${rows.length} eventi notarizzati`
+          : "Nessun evento notarizzato disponibile";
+      } catch (err) {
+        console.error(err);
+        resultsBody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 20px; color: #b00020;">
+          Errore caricamento iniziale: ${safeStr(err?.message, "richiesta fallita")}
+        </td></tr>`;
+        resultCount.innerText = "Errore";
+      }
+    })();
 
     // Enter per cercare
     filterUidEl.addEventListener('keydown', (e) => {
