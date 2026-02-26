@@ -102,6 +102,7 @@
 
   <script>
     const API_BASE = "http://localhost:2025";
+    const INITIAL_LATEST_LIMIT = 5;
 
     const btnSearch = document.getElementById('btnSearch');
     const resultsBody = document.getElementById('resultsBody');
@@ -150,6 +151,13 @@
         throw new Error(`HTTP ${res.status}: ${t || "Richiesta fallita"}`);
       }
       return res.json();
+    }
+
+    function parseEntryMaybe(e) {
+      if (typeof e === "string") {
+        try { return JSON.parse(e); } catch { return null; }
+      }
+      return e;
     }
 
     function rowFromEvent(ev, index, fallbackUID = "") {
@@ -238,12 +246,7 @@
 
       // entries può essere array di oggetti già parsati (json.RawMessage -> JSON)
       // oppure stringhe: gestiamo entrambi
-      const parsed = entries.map((e) => {
-        if (typeof e === "string") {
-          try { return JSON.parse(e); } catch { return null; }
-        }
-        return e;
-      }).filter(Boolean);
+      const parsed = entries.map(parseEntryMaybe).filter(Boolean);
 
       // Proviamo ad associare index<->entry per posizione (il backend li invia allineati)
       const rows = [];
@@ -252,15 +255,19 @@
         rows.push(rowFromEvent(ev, idxs[i], uid));
       }
 
-      // Ordina DESC per versione (o fallback: index desc) così vedi prima l'ultima
+      sortRowsNewestFirst(rows);
+
+      return rows;
+    }
+
+    function sortRowsNewestFirst(rows) {
+      // DESC per versione (fallback: index desc) così vedi prima l'ultima.
       rows.sort((a, b) => {
         const av = Number(a.version), bv = Number(b.version);
         const avOk = Number.isFinite(av), bvOk = Number.isFinite(bv);
         if (avOk && bvOk && av !== bv) return bv - av;
         return Number(b.index) - Number(a.index);
       });
-
-      return rows;
     }
 
     async function searchByDocUID(docUID) {
@@ -269,8 +276,19 @@
       return rowsFromApiResponse(resp);
     }
 
-    // Ricerca su click
-    btnSearch.addEventListener('click', async () => {
+    function setSearchLoading(isLoading) {
+      btnSearch.innerText = isLoading ? "Ricerca in corso..." : "Applica Filtri";
+      btnSearch.disabled = isLoading;
+    }
+
+    function showTableError(prefix, err) {
+      resultsBody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 20px; color: #b00020;">
+        ${prefix}: ${safeStr(err?.message, "richiesta fallita")}
+      </td></tr>`;
+      resultCount.innerText = "Errore";
+    }
+
+    async function handleSearch() {
       const docUID = filterUidEl.value.trim();
 
       // Per ora: solo doc_uid
@@ -280,46 +298,42 @@
         return;
       }
 
-      btnSearch.innerText = "Ricerca in corso...";
-      btnSearch.disabled = true;
+      setSearchLoading(true);
 
       try {
         const rows = await searchByDocUID(docUID);
         renderTable(rows);
       } catch (err) {
         console.error(err);
-        resultsBody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 20px; color: #b00020;">
-          Errore: ${safeStr(err?.message, "richiesta fallita")}
-        </td></tr>`;
-        resultCount.innerText = "Errore";
+        showTableError("Errore", err);
       } finally {
-        btnSearch.innerText = "Applica Filtri";
-        btnSearch.disabled = false;
+        setSearchLoading(false);
       }
-    });
+    }
 
-    // Caricamento iniziale: ultimi 5 eventi notarizzati.
-    (async () => {
+    async function loadInitialLatestEvents() {
       try {
         resultCount.innerText = "Caricamento ultimi eventi...";
-        const rows = await loadLatestNotarizedEvents(5);
+        const rows = await loadLatestNotarizedEvents(INITIAL_LATEST_LIMIT);
         renderTable(rows);
         resultCount.innerText = rows.length > 0
           ? `Ultimi ${rows.length} eventi notarizzati`
           : "Nessun evento notarizzato disponibile";
       } catch (err) {
         console.error(err);
-        resultsBody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 20px; color: #b00020;">
-          Errore caricamento iniziale: ${safeStr(err?.message, "richiesta fallita")}
-        </td></tr>`;
-        resultCount.innerText = "Errore";
+        showTableError("Errore caricamento iniziale", err);
       }
-    })();
+    }
+
+    // Ricerca su click
+    btnSearch.addEventListener('click', handleSearch);
 
     // Enter per cercare
     filterUidEl.addEventListener('keydown', (e) => {
-      if (e.key === "Enter") btnSearch.click();
+      if (e.key === "Enter") handleSearch();
     });
+
+    loadInitialLatestEvents();
   </script>
 </body>
 </html>
