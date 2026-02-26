@@ -100,5 +100,45 @@
       <a href="index.html" style="color: var(--primary); text-decoration: none; font-weight: 600;">← Torna alla Dashboard</a>
     </nav>
   </main>
+
+  <script>
+    const API_BASE = "http://localhost:2025";
+
+    function parseCheckpointSize(raw) {
+      const lines = raw.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+      const sizeLine = lines.find((line) => /^\d+$/.test(line));
+      if (!sizeLine) throw new Error("Formato checkpoint non riconosciuto");
+      return Number(sizeLine);
+    }
+
+    function merkleTreeHeight(treeSize) {
+      if (!Number.isSafeInteger(treeSize) || treeSize <= 0) return 0;
+      return Math.ceil(Math.log2(treeSize)) + 1;
+    }
+
+    async function loadStatus() {
+      const totalEntriesEl = document.getElementById("totalEntries");
+      const treeSizeEl = document.getElementById("treeSize");
+      const checkpointRawEl = document.getElementById("checkpointRaw");
+
+      try {
+        const res = await fetch(`${API_BASE}/checkpoint`, { cache: "no-store" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        const raw = await res.text();
+        checkpointRawEl.textContent = raw.trim() || "(checkpoint vuoto)";
+
+        const treeSize = parseCheckpointSize(raw);
+        totalEntriesEl.textContent = String(treeSize);
+        treeSizeEl.textContent = String(merkleTreeHeight(treeSize));
+      } catch (err) {
+        totalEntriesEl.textContent = "n/a";
+        treeSizeEl.textContent = "n/a";
+        checkpointRawEl.textContent = `Errore caricamento checkpoint: ${err?.message || String(err)}`;
+      }
+    }
+
+    loadStatus();
+  </script>
 </body>
 </html>
