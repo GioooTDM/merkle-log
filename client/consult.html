@@ -123,9 +123,10 @@
       },
 
       parseIssuer(issuerObj) {
-        // TODO: se issuerObj.name è vuoto usare issuerObj.entity_id
         if (!issuerObj) return "-";
-        return issuerObj.name ? String(issuerObj.name) : "-";
+        if (issuerObj.name) return String(issuerObj.name);
+        if (issuerObj.entity_id) return String(issuerObj.entity_id);
+        return "-";
       },
 
       formatDate(s) {

@@ -340,6 +340,10 @@ func (h *NotaryHandler) GetEntriesByDocUID(w http.ResponseWriter, r *http.Reques
 			// Per ora: salta entry non leggibile
 			continue
 		}
+		if !entryMatchesDocUID(b, docUID) {
+			log.Printf("index mismatch: requested doc_uid=%q index=%d", docUID, idx)
+			continue
+		}
 		entries = append(entries, json.RawMessage(b))
 		okIndexes = append(okIndexes, idx)
 	}
@@ -356,6 +360,16 @@ func (h *NotaryHandler) GetEntriesByDocUID(w http.ResponseWriter, r *http.Reques
 		"count":   len(entries),
 		"entries": entries,
 	})
+}
+
+func entryMatchesDocUID(raw []byte, wantDocUID string) bool {
+	var entry struct {
+		DocUID string `json:"doc_uid"`
+	}
+	if err := json.Unmarshal(raw, &entry); err != nil {
+		return false
+	}
+	return strings.TrimSpace(entry.DocUID) == strings.TrimSpace(wantDocUID)
 }
 
 // Helpers
