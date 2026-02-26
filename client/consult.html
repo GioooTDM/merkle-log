@@ -101,239 +101,240 @@
   </main>
 
   <script>
-    const API_BASE = "http://localhost:2025";
-    const INITIAL_LATEST_LIMIT = 5;
+    const Config = {
+      API_BASE: "http://localhost:2025",
+      INITIAL_LATEST_LIMIT: 5
+    };
 
-    const btnSearch = document.getElementById('btnSearch');
-    const resultsBody = document.getElementById('resultsBody');
-    const resultCount = document.getElementById('resultCount');
-    const filterUidEl = document.getElementById('filterUid');
+    const DOM = {
+      btnSearch: document.getElementById('btnSearch'),
+      resultsBody: document.getElementById('resultsBody'),
+      resultCount: document.getElementById('resultCount'),
+      filterUidInput: document.getElementById('filterUid')
+    };
 
-    function safeStr(v, fallback = "-") {
-      return (v === undefined || v === null || v === "") ? fallback : String(v);
-    }
+    const Utils = {
+      safeStr(v, fallback = "-") {
+        return (v === undefined || v === null || v === "") ? fallback : String(v);
+      },
 
-    function normalizeHex(h) {
-      return String(h || "").trim().toLowerCase().replace(/^hex:/, "");
-    }
+      normalizeHex(h) {
+        return String(h || "").trim().toLowerCase().replace(/^hex:/, "");
+      },
 
-    function parseIssuer(issuerObj) {
-      if (!issuerObj) return "-";
-      const name = issuerObj.name ? String(issuerObj.name) : "-";
-      return name;
-      // const id = issuerObj.entity_id ? String(issuerObj.entity_id) : "";
-      // if (name && id) return `${name} (${id})`;
-      // return name || id || "-";
-    }
+      parseIssuer(issuerObj) {
+        // TODO: se issuerObj.name è vuoto usare issuerObj.entity_id
+        if (!issuerObj) return "-";
+        return issuerObj.name ? String(issuerObj.name) : "-";
+      },
 
-    function formatDate(s) {
-      if (!s) return "-";
+      formatDate(s) {
+        if (!s) return "-";
 
-      const d = new Date(s);
-      if (isNaN(d.getTime())) return s; // fallback se formato strano
+        const d = new Date(s);
+        if (isNaN(d.getTime())) return s; // fallback se formato strano
 
-      const pad = (n) => n.toString().padStart(2, "0");
+        const pad = (n) => n.toString().padStart(2, "0");
 
-      const year  = d.getFullYear();
-      const month = pad(d.getMonth() + 1);
-      const day   = pad(d.getDate());
-      const hours = pad(d.getHours());
-      const mins  = pad(d.getMinutes());
-      const secs  = pad(d.getSeconds());
+        const year  = d.getFullYear();
+        const month = pad(d.getMonth() + 1);
+        const day   = pad(d.getDate());
+        const hours = pad(d.getHours());
+        const mins  = pad(d.getMinutes());
+        const secs  = pad(d.getSeconds());
 
-      return `${year}-${month}-${day} ${hours}:${mins}:${secs}`;
-    }
+        return `${year}-${month}-${day} ${hours}:${mins}:${secs}`;
+      },
 
-    async function fetchJson(url) {
-      const res = await fetch(url);
-      if (!res.ok) {
-        const t = await res.text().catch(() => "");
-        throw new Error(`HTTP ${res.status}: ${t || "Richiesta fallita"}`);
+      parseEntryMaybe(e) {
+        if (typeof e === "string") {
+          try { return JSON.parse(e); } catch { return null; }
+        }
+        return e;
       }
-      return res.json();
-    }
+    };
 
-    function parseEntryMaybe(e) {
-      if (typeof e === "string") {
-        try { return JSON.parse(e); } catch { return null; }
+    const API = {
+      async fetchJson(url) {
+        const res = await fetch(url);
+        if (!res.ok) {
+          const t = await res.text().catch(() => "");
+          throw new Error(`HTTP ${res.status}: ${t || "Richiesta fallita"}`);
+        }
+        return res.json();
+      },
+
+      async getCheckpointSize() {
+        const res = await fetch(`${Config.API_BASE}/checkpoint`, { cache: "no-store" });
+        if (!res.ok) {
+          const t = await res.text().catch(() => "");
+          throw new Error(`HTTP ${res.status}: ${t || "checkpoint non disponibile"}`);
+        }
+        const text = await res.text();
+        const lines = text.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+        const sizeLine = lines.find((line) => /^\d+$/.test(line));
+        if (!sizeLine) throw new Error("Formato checkpoint non riconosciuto");
+        return Number(sizeLine);
+      },
+
+      async getEntryByIndex(index) {
+        const res = await fetch(`${Config.API_BASE}/get-entry/${index}`);
+        if (!res.ok) return null;
+        const text = await res.text();
+        try { return JSON.parse(text); } catch { return null; }
+      },
+
+      async searchByDocUID(docUID) {
+        const url = `${Config.API_BASE}/get-entries-by-docuid?doc_uid=${encodeURIComponent(docUID)}`;
+        return this.fetchJson(url);
       }
-      return e;
-    }
+    };
 
-    function rowFromEvent(ev, index, fallbackUID = "") {
-      return {
-        index,
-        date: formatDate(ev.recorded_at || ev.issued_at),
-        issuer: parseIssuer(ev.issuer),
-        uid: safeStr(ev.doc_uid || fallbackUID),
-        version: safeStr(ev.doc_version, "?"),
-        title: safeStr(ev.title || ev.event_type || "Evento"),
-        event_id: safeStr(ev.event_id),
-        event_type: safeStr(ev.event_type),
-        payload_hash: normalizeHex(ev?.payload_hash?.value),
-      };
-    }
+    const App = {
+      init() {
+        this.bindEvents();
+        this.loadInitialEvents();
+      },
 
-    async function fetchCheckpointSize() {
-      const res = await fetch(`${API_BASE}/checkpoint`, { cache: "no-store" });
-      if (!res.ok) {
-        const t = await res.text().catch(() => "");
-        throw new Error(`HTTP ${res.status}: ${t || "checkpoint non disponibile"}`);
+      bindEvents() {
+        DOM.btnSearch.addEventListener('click', () => this.handleSearch());
+        DOM.filterUidInput.addEventListener('keydown', (e) => {
+          if (e.key === "Enter") this.handleSearch();
+        });
+      },
+
+      rowFromEvent(ev, index, fallbackUID = "") {
+        return {
+          index,
+          date: Utils.formatDate(ev.recorded_at || ev.issued_at),
+          issuer: Utils.parseIssuer(ev.issuer),
+          uid: Utils.safeStr(ev.doc_uid || fallbackUID),
+          version: Utils.safeStr(ev.doc_version, "?"),
+          title: Utils.safeStr(ev.title || ev.event_type || "Evento"),
+          event_id: Utils.safeStr(ev.event_id),
+          event_type: Utils.safeStr(ev.event_type),
+          payload_hash: Utils.normalizeHex(ev?.payload_hash?.value),
+        };
+      },
+
+      sortRowsNewestFirst(rows) {
+        rows.sort((a, b) => {
+          const av = Number(a.version), bv = Number(b.version);
+          const avOk = Number.isFinite(av), bvOk = Number.isFinite(bv);
+          if (avOk && bvOk && av !== bv) return bv - av;
+          return Number(b.index) - Number(a.index);
+        });
+      },
+
+      rowsFromApiResponse(apiResp) {
+        const uid = apiResp?.doc_uid;
+        const idxs = Array.isArray(apiResp?.indexes) ? apiResp.indexes : [];
+        const entries = Array.isArray(apiResp?.entries) ? apiResp.entries : [];
+
+        const parsed = entries.map(Utils.parseEntryMaybe).filter(Boolean);
+
+        const rows = [];
+        for (let i = 0; i < Math.min(idxs.length, parsed.length); i++) {
+          const ev = parsed[i];
+          rows.push(this.rowFromEvent(ev, idxs[i], uid));
+        }
+
+        this.sortRowsNewestFirst(rows);
+        return rows;
+      },
+
+      async loadLatestNotarizedEvents(limit = 5) {
+        const size = await API.getCheckpointSize();
+        if (!Number.isFinite(size) || size <= 0) return [];
+
+        const out = [];
+        for (let idx = size - 1; idx >= 0 && out.length < limit; idx--) {
+          const ev = await API.getEntryByIndex(idx);
+          if (!ev || typeof ev !== "object") continue;
+          out.push(this.rowFromEvent(ev, idx));
+        }
+        return out;
+      },
+
+      renderTable(rows) {
+        DOM.resultsBody.innerHTML = "";
+
+        if (!rows || rows.length === 0) {
+          DOM.resultsBody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 20px; color: #777;">Nessun documento trovato per il doc_uid indicato.</td></tr>`;
+          DOM.resultCount.innerText = "0 risultati";
+          return;
+        }
+
+        rows.forEach(item => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td><span class="badge-index">${item.index}</span></td>
+            <td style="white-space: nowrap;">${item.date}</td>
+            <td>${item.issuer}</td>
+            <td>
+              <strong>${item.title}</strong><br>
+              <span class="muted" style="font-size: 0.75rem;">UID: ${item.uid}</span>
+            </td>
+            <td><span class="badge-version">v${item.version}</span></td>
+            <td><a href="details.html?index=${item.index}" class="action-link">Dettagli →</a></td>
+          `;
+          DOM.resultsBody.appendChild(tr);
+        });
+
+        DOM.resultCount.innerText = `Mostrando ${rows.length} risultati`;
+      },
+
+      setSearchLoading(isLoading) {
+        DOM.btnSearch.innerText = isLoading ? "Ricerca in corso..." : "Applica Filtri";
+        DOM.btnSearch.disabled = isLoading;
+      },
+
+      showTableError(prefix, err) {
+        DOM.resultsBody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 20px; color: #b00020;">
+          ${prefix}: ${Utils.safeStr(err?.message, "richiesta fallita")}
+        </td></tr>`;
+        DOM.resultCount.innerText = "Errore";
+      },
+
+      async handleSearch() {
+        const docUID = DOM.filterUidInput.value.trim();
+
+        if (!docUID) {
+          this.renderTable([]);
+          DOM.resultCount.innerText = "Inserisci un doc_uid per cercare";
+          return;
+        }
+
+        this.setSearchLoading(true);
+
+        try {
+          const resp = await API.searchByDocUID(docUID);
+          const rows = this.rowsFromApiResponse(resp);
+          this.renderTable(rows);
+        } catch (err) {
+          console.error(err);
+          this.showTableError("Errore", err);
+        } finally {
+          this.setSearchLoading(false);
+        }
+      },
+
+      async loadInitialEvents() {
+        try {
+          DOM.resultCount.innerText = "Caricamento ultimi eventi...";
+          const rows = await this.loadLatestNotarizedEvents(Config.INITIAL_LATEST_LIMIT);
+          this.renderTable(rows);
+          DOM.resultCount.innerText = rows.length > 0
+            ? `Ultimi ${rows.length} eventi notarizzati`
+            : "Nessun evento notarizzato disponibile";
+        } catch (err) {
+          console.error(err);
+          this.showTableError("Errore caricamento iniziale", err);
+        }
       }
+    };
 
-      const text = await res.text();
-      const lines = text.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
-      const sizeLine = lines.find((line) => /^\d+$/.test(line));
-      if (!sizeLine) throw new Error("Formato checkpoint non riconosciuto");
-      return Number(sizeLine);
-    }
-
-    async function fetchEntryByIndex(index) {
-      const res = await fetch(`${API_BASE}/get-entry/${index}`);
-      if (!res.ok) return null;
-      const text = await res.text();
-      try { return JSON.parse(text); } catch { return null; }
-    }
-
-    async function loadLatestNotarizedEvents(limit = 5) {
-      const size = await fetchCheckpointSize();
-      if (!Number.isFinite(size) || size <= 0) return [];
-
-      const out = [];
-
-      for (let idx = size - 1; idx >= 0 && out.length < limit; idx--) {
-        const ev = await fetchEntryByIndex(idx);
-        if (!ev || typeof ev !== "object") continue;
-        out.push(rowFromEvent(ev, idx));
-      }
-      return out;
-    }
-
-    // Render tabella: si aspetta array di "row" con campi già pronti
-    function renderTable(rows) {
-      resultsBody.innerHTML = "";
-
-      if (!rows || rows.length === 0) {
-        resultsBody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 20px; color: #777;">Nessun documento trovato per il doc_uid indicato.</td></tr>`;
-        resultCount.innerText = "0 risultati";
-        return;
-      }
-
-      rows.forEach(item => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td><span class="badge-index">${item.index}</span></td>
-          <td style="white-space: nowrap;">${item.date}</td>
-          <td>${item.issuer}</td>
-          <td>
-            <strong>${item.title}</strong><br>
-            <span class="muted" style="font-size: 0.75rem;">UID: ${item.uid}</span>
-          </td>
-          <td><span class="badge-version">v${item.version}</span></td>
-          <td><a href="details.html?index=${item.index}" class="action-link">Dettagli →</a></td>
-        `;
-        resultsBody.appendChild(tr);
-      });
-
-      resultCount.innerText = `Mostrando ${rows.length} risultati`;
-    }
-
-    function rowsFromApiResponse(apiResp) {
-      // apiResp: { doc_uid, indexes, count, entries:[{...}, ...] }
-      const uid = apiResp?.doc_uid;
-      const idxs = Array.isArray(apiResp?.indexes) ? apiResp.indexes : [];
-      const entries = Array.isArray(apiResp?.entries) ? apiResp.entries : [];
-
-      // entries può essere array di oggetti già parsati (json.RawMessage -> JSON)
-      // oppure stringhe: gestiamo entrambi
-      const parsed = entries.map(parseEntryMaybe).filter(Boolean);
-
-      // Proviamo ad associare index<->entry per posizione (il backend li invia allineati)
-      const rows = [];
-      for (let i = 0; i < Math.min(idxs.length, parsed.length); i++) {
-        const ev = parsed[i];
-        rows.push(rowFromEvent(ev, idxs[i], uid));
-      }
-
-      sortRowsNewestFirst(rows);
-
-      return rows;
-    }
-
-    function sortRowsNewestFirst(rows) {
-      // DESC per versione (fallback: index desc) così vedi prima l'ultima.
-      rows.sort((a, b) => {
-        const av = Number(a.version), bv = Number(b.version);
-        const avOk = Number.isFinite(av), bvOk = Number.isFinite(bv);
-        if (avOk && bvOk && av !== bv) return bv - av;
-        return Number(b.index) - Number(a.index);
-      });
-    }
-
-    async function searchByDocUID(docUID) {
-      const url = `${API_BASE}/get-entries-by-docuid?doc_uid=${encodeURIComponent(docUID)}`;
-      const resp = await fetchJson(url);
-      return rowsFromApiResponse(resp);
-    }
-
-    function setSearchLoading(isLoading) {
-      btnSearch.innerText = isLoading ? "Ricerca in corso..." : "Applica Filtri";
-      btnSearch.disabled = isLoading;
-    }
-
-    function showTableError(prefix, err) {
-      resultsBody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 20px; color: #b00020;">
-        ${prefix}: ${safeStr(err?.message, "richiesta fallita")}
-      </td></tr>`;
-      resultCount.innerText = "Errore";
-    }
-
-    async function handleSearch() {
-      const docUID = filterUidEl.value.trim();
-
-      // Per ora: solo doc_uid
-      if (!docUID) {
-        renderTable([]);
-        resultCount.innerText = "Inserisci un doc_uid per cercare";
-        return;
-      }
-
-      setSearchLoading(true);
-
-      try {
-        const rows = await searchByDocUID(docUID);
-        renderTable(rows);
-      } catch (err) {
-        console.error(err);
-        showTableError("Errore", err);
-      } finally {
-        setSearchLoading(false);
-      }
-    }
-
-    async function loadInitialLatestEvents() {
-      try {
-        resultCount.innerText = "Caricamento ultimi eventi...";
-        const rows = await loadLatestNotarizedEvents(INITIAL_LATEST_LIMIT);
-        renderTable(rows);
-        resultCount.innerText = rows.length > 0
-          ? `Ultimi ${rows.length} eventi notarizzati`
-          : "Nessun evento notarizzato disponibile";
-      } catch (err) {
-        console.error(err);
-        showTableError("Errore caricamento iniziale", err);
-      }
-    }
-
-    // Ricerca su click
-    btnSearch.addEventListener('click', handleSearch);
-
-    // Enter per cercare
-    filterUidEl.addEventListener('keydown', (e) => {
-      if (e.key === "Enter") handleSearch();
-    });
-
-    loadInitialLatestEvents();
+    App.init();
   </script>
 </body>
 </html>
