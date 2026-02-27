@@ -97,7 +97,7 @@ func (h *NotaryHandler) GetByDoc(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jsonResponse(w, map[string]interface{}{
+	jsonResponse(w, map[string]any{
 		"log_index": logIndex,
 		"leaf_hash": leafHash,
 	})
@@ -122,7 +122,7 @@ func (h *NotaryHandler) GetByLeaf(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jsonResponse(w, map[string]interface{}{"log_index": logIndex})
+	jsonResponse(w, map[string]any{"log_index": logIndex})
 }
 
 const EntryBundleWidth uint64 = 256
@@ -166,7 +166,7 @@ func (h *NotaryHandler) GetProof(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Checkpoint pubblicato -> tree size “commit-tato”
+	// Checkpoint pubblicato -> tree size "commit-tato"
 	cpRaw, cp, err := h.readPublishedCheckpoint(r.Context())
 	if err != nil {
 		http.Error(w, "Checkpoint not available", http.StatusServiceUnavailable)
@@ -191,7 +191,7 @@ func (h *NotaryHandler) GetProof(w http.ResponseWriter, r *http.Request) {
 			if err2 == nil {
 				return b2, nil
 			}
-			// Se vuoi rispettare “os.ErrNotExist”, prova a propagare quello.
+			// Se vuoi rispettare "os.ErrNotExist", prova a propagare quello.
 			if errors.Is(err2, os.ErrNotExist) {
 				return nil, os.ErrNotExist
 			}
@@ -325,7 +325,7 @@ func (h *NotaryHandler) GetEntriesByDocUID(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Ordine stabile: crescente (poi il client può reverse per “latest first”)
+	// Ordine stabile: crescente (poi il client può reverse per "latest first")
 	sort.Slice(indexes, func(i, j int) bool { return indexes[i] < indexes[j] })
 
 	// 2) recupera entry dal log
@@ -335,7 +335,7 @@ func (h *NotaryHandler) GetEntriesByDocUID(w http.ResponseWriter, r *http.Reques
 	for _, idx := range indexes {
 		b, err := h.readEntryByIndex(r.Context(), idx)
 		if err != nil {
-			// Se vuoi essere “strict”, puoi fallire subito:
+			// Se vuoi essere "strict", puoi fallire subito:
 			// http.Error(w, "Failed to read entry from log", http.StatusInternalServerError); return
 			// Per ora: salta entry non leggibile
 			continue
@@ -402,7 +402,7 @@ func hashBytes(data []byte) string {
 	return hex.EncodeToString(h[:])
 }
 
-func jsonResponse(w http.ResponseWriter, data interface{}) {
+func jsonResponse(w http.ResponseWriter, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(data); err != nil {
 		log.Printf("jsonResponse encode error: %v", err)

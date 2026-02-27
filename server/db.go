@@ -89,13 +89,13 @@ func (idx *Indexer) GetByLeafHash(leafHash string) (uint64, error) {
 }
 
 // GetIndexesByDocUID returns all log_index values for a given doc_uid, ordered ascending.
-func (i *Indexer) GetIndexesByDocUID(docUID string) ([]uint64, error) {
+func (idx *Indexer) GetIndexesByDocUID(docUID string) ([]uint64, error) {
 	docUID = strings.TrimSpace(docUID)
 	if docUID == "" {
 		return nil, fmt.Errorf("empty doc_uid")
 	}
 
-	rows, err := i.db.Query(`
+	rows, err := idx.db.Query(`
 		SELECT log_index
 		FROM notary_index
 		WHERE doc_uid = ?
@@ -108,14 +108,14 @@ func (i *Indexer) GetIndexesByDocUID(docUID string) ([]uint64, error) {
 
 	var out []uint64
 	for rows.Next() {
-		var idx int64
-		if err := rows.Scan(&idx); err != nil {
+		var i int64
+		if err := rows.Scan(&i); err != nil {
 			return nil, err
 		}
-		if idx < 0 {
+		if i < 0 {
 			continue
 		}
-		out = append(out, uint64(idx))
+		out = append(out, uint64(i))
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

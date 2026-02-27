@@ -17,7 +17,7 @@ import (
 func main() {
 	storageDir := flag.String("storage_dir", "", "Root directory for log files")
 	listenAddr := flag.String("listen", ":2025", "Listen address")
-	privKeyArg := flag.String("private_key", "", "Private file key path.  Se vuoto usa LOG_PRIVATE_KEY env var.")
+	privKeyArg := flag.String("private_key", "", "Private file key path. Se vuoto usa LOG_PRIVATE_KEY env var.")
 	anchorFile := flag.String("anchor_file", "", "Fake blockchain anchor output file (JSONL). Empty disables anchoring.")
 	anchorInterval := flag.Duration("anchor_interval", time.Hour, "Checkpoint anchor interval (e.g. 1h, 10m)")
 	flag.Parse()
@@ -53,21 +53,7 @@ func main() {
 	}
 	defer indexer.Close()
 
-	var anchorWorker *AnchorWorker
-	if *anchorFile != "" {
-		publisher, err := NewFileAnchorPublisher(*anchorFile)
-		if err != nil {
-			log.Fatalf("Failed to init anchor publisher: %v", err)
-		}
-		worker, err := NewAnchorWorker(logReader, publisher, *anchorInterval)
-		if err != nil {
-			log.Fatalf("Failed to init anchor worker: %v", err)
-		}
-		anchorWorker = worker
-
-		go worker.Run(ctx)
-		log.Printf("Checkpoint anchoring enabled: every %s -> %s", *anchorInterval, *anchorFile)
-	}
+	anchorWorker := initAnchorWorker(ctx, logReader, *anchorFile, *anchorInterval)
 
 	// 2. Setup Handlers
 	h := NewNotaryHandler(appender, indexer, logReader)
@@ -87,7 +73,7 @@ func main() {
 	fs := http.FileServer(http.Dir(*storageDir))
 	mux.Handle("/checkpoint", noCache(fs))
 	mux.Handle("/tile/", longCache(fs))
-	mux.Handle("/entries/", fs)
+	mux.Handle("/entries/", fs) // TODO: endpoint sbagliato, non vengono rispettate le convenzioni di tessera
 
 	// 3. Start Server
 	log.Printf("PA Notary Server starting on %s", *listenAddr)
@@ -96,6 +82,29 @@ func main() {
 		Handler: enableCORS(mux),
 	}
 	log.Fatal(srv.ListenAndServe())
+}
+
+// initAnchorWorker creates and starts the anchor worker if anchorFile is set.
+// Returns nil if anchoring is disabled.
+func initAnchorWorker(ctx context.Context, logReader tessera.LogReader, anchorFile string, interval time.Duration) *AnchorWorker {
+	if anchorFile == "" {
+		return nil
+	}
+
+	publisher, err := NewFileAnchorPublisher(anchorFile)
+	if err != nil {
+		log.Fatalf("Failed to init anchor publisher: %v", err)
+	}
+
+	worker, err := NewAnchorWorker(logReader, publisher, interval)
+	if err != nil {
+		log.Fatalf("Failed to init anchor worker: %v", err)
+	}
+
+	go worker.Run(ctx)
+	log.Printf("Checkpoint anchoring enabled: every %s -> %s", interval, anchorFile)
+
+	return worker
 }
 
 func initSigner(path string) note.Signer {
