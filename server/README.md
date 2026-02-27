@@ -18,6 +18,32 @@ go run . --storage_dir="$LOG_DIR" --listen=":2025"
 - `--storage_dir` (obbligatorio): directory dei dati Tessera (checkpoint, tile, entries)
 - `--listen` (default `:2025`): bind HTTP
 - `--private_key` (opzionale): path file chiave privata; se assente usa `LOG_PRIVATE_KEY`
+- `--anchor_file` (opzionale): abilita anchoring periodico su "blockchain fake" (file di testo JSONL)
+- `--anchor_interval` (default `1h`): intervallo di pubblicazione checkpoint
+
+## Anchoring periodico (fake blockchain)
+Esempio:
+
+```bash
+go run . \
+  --storage_dir="$LOG_DIR" \
+  --listen=":2025" \
+  --anchor_file="./anchors/fake-chain.txt" \
+  --anchor_interval="1h"
+```
+
+Comportamento:
+- ogni intervallo legge il checkpoint corrente
+- se il checkpoint e nuovo lo pubblica nel file fake chain
+- formato file: una riga JSON per record (JSONL)
+- puoi forzare una pubblicazione immediata con `POST /anchor/force`
+
+Campi salvati:
+- `published_at_utc`
+- `tree_size`
+- `root_hash_hex`
+- `checkpoint_hash`
+- `checkpoint_raw`
 
 ## Endpoint principali
 - `POST /add`
@@ -39,6 +65,9 @@ go run . --storage_dir="$LOG_DIR" --listen=":2025"
   - restituisce entry e indici associati al `doc_uid`
 
 - `GET /checkpoint`
+
+- `POST /anchor/force`
+  - forza pubblicazione immediata del checkpoint corrente (se anchoring abilitato)
 
 ## Note su DB indice
 - File: `server/notary_index.db`
