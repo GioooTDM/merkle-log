@@ -1,4 +1,4 @@
-package main
+package index
 
 import (
 	"database/sql"
@@ -27,7 +27,7 @@ var notaryIndexDDL = []string{
 	`CREATE INDEX IF NOT EXISTS idx_notary_index_leaf_hash ON notary_index(leaf_hash);`,
 }
 
-func NewIndexer(dbPath string) (*Indexer, error) {
+func New(dbPath string) (*Indexer, error) {
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, err

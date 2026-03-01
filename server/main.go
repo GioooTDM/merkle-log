@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"merkle-log/server/internal/anchor"
+	"merkle-log/server/internal/index"
 
 	"github.com/transparency-dev/tessera"
 	"github.com/transparency-dev/tessera/storage/posix"
@@ -49,7 +50,7 @@ func main() {
 	}
 	defer shutdown(ctx)
 
-	indexer, err := NewIndexer("notary_index.db")
+	indexer, err := index.New("notary_index.db")
 	if err != nil {
 		log.Fatalf("Failed to init indexer: %v", err)
 	}

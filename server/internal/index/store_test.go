@@ -1,4 +1,4 @@
-package main
+package index
 
 import (
 	"database/sql"
@@ -11,9 +11,9 @@ import (
 func newTestIndexer(t *testing.T) *Indexer {
 	t.Helper()
 
-	idx, err := NewIndexer(filepath.Join(t.TempDir(), "index.db"))
+	idx, err := New(filepath.Join(t.TempDir(), "index.db"))
 	if err != nil {
-		t.Fatalf("NewIndexer() error = %v", err)
+		t.Fatalf("New() error = %v", err)
 	}
 	t.Cleanup(func() {
 		_ = idx.Close()
