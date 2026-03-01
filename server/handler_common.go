@@ -10,8 +10,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-
-	formatsLog "github.com/transparency-dev/formats/log"
 )
 
 func parseIndexFromPath(path, prefix string) (uint64, error) {
@@ -38,16 +36,10 @@ func jsonResponse(w http.ResponseWriter, data any) {
 	}
 }
 
-func (h *NotaryHandler) readPublishedCheckpoint(ctx context.Context) ([]byte, formatsLog.Checkpoint, error) {
-	return readPublishedCheckpoint(ctx, h.reader)
-}
-
-func (h *NotaryHandler) publishedSize(ctx context.Context) (uint64, error) {
-	return publishedTreeSize(ctx, h.reader)
-}
-
+// readEntryByIndex keeps the handler-facing entry lookup API.
+// The protocol-level read path is centralized in log_read_helpers.go.
 func (h *NotaryHandler) readEntryByIndex(ctx context.Context, idx uint64) ([]byte, error) {
-	size, err := h.publishedSize(ctx)
+	size, err := publishedTreeSize(ctx, h.reader)
 	if err != nil {
 		return nil, err
 	}

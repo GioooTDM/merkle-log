@@ -10,6 +10,8 @@ import (
 	"github.com/transparency-dev/tessera/api/layout"
 )
 
+// These helpers are the single protocol-level read path for checkpoint/tree-size/entries.
+// Handler and DB alignment code should call these functions instead of duplicating logic.
 func readPublishedCheckpoint(ctx context.Context, reader tessera.LogReader) ([]byte, formatsLog.Checkpoint, error) {
 	cpRaw, err := reader.ReadCheckpoint(ctx)
 	if err != nil {

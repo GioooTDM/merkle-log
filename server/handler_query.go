@@ -8,6 +8,15 @@ import (
 	"strings"
 )
 
+func requireQueryParam(w http.ResponseWriter, r *http.Request, key, missingMsg string) (string, bool) {
+	value := strings.TrimSpace(r.URL.Query().Get(key))
+	if value == "" {
+		http.Error(w, missingMsg, http.StatusBadRequest)
+		return "", false
+	}
+	return value, true
+}
+
 // TODO: attenzione, ci potrebbero essere più eventi notarizzati con lo stesso doc hash. Lo stesso documento può essere notarizzato più volte in contesti diversi.
 func (h *NotaryHandler) GetByDoc(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -15,10 +24,8 @@ func (h *NotaryHandler) GetByDoc(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hash := r.URL.Query().Get("hash")
-
-	if hash == "" {
-		http.Error(w, "Parametro 'hash' mancante", http.StatusBadRequest)
+	hash, ok := requireQueryParam(w, r, "hash", "Parametro 'hash' mancante")
+	if !ok {
 		return
 	}
 
@@ -40,10 +47,8 @@ func (h *NotaryHandler) GetByLeaf(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hash := r.URL.Query().Get("hash")
-
-	if hash == "" {
-		http.Error(w, "Parametro 'hash' mancante", http.StatusBadRequest)
+	hash, ok := requireQueryParam(w, r, "hash", "Parametro 'hash' mancante")
+	if !ok {
 		return
 	}
 
@@ -62,9 +67,8 @@ func (h *NotaryHandler) GetIndexesByDocUID(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	docUID := strings.TrimSpace(r.URL.Query().Get("doc_uid"))
-	if docUID == "" {
-		http.Error(w, "Missing doc_uid", http.StatusBadRequest)
+	docUID, ok := requireQueryParam(w, r, "doc_uid", "Missing doc_uid")
+	if !ok {
 		return
 	}
 
@@ -91,9 +95,8 @@ func (h *NotaryHandler) GetEntriesByDocUID(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	docUID := strings.TrimSpace(r.URL.Query().Get("doc_uid"))
-	if docUID == "" {
-		http.Error(w, "Missing doc_uid", http.StatusBadRequest)
+	docUID, ok := requireQueryParam(w, r, "doc_uid", "Missing doc_uid")
+	if !ok {
 		return
 	}
 

@@ -50,7 +50,7 @@ func (h *NotaryHandler) GetProof(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Checkpoint pubblicato -> tree size "commit-tato"
-	cpRaw, cp, err := h.readPublishedCheckpoint(r.Context())
+	cpRaw, cp, err := readPublishedCheckpoint(r.Context(), h.reader)
 	if err != nil {
 		http.Error(w, "Checkpoint not available", http.StatusServiceUnavailable)
 		return
