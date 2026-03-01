@@ -53,6 +53,11 @@ func main() {
 	}
 	defer indexer.Close()
 
+	if err := indexer.ValidateAlignedWithLog(ctx, logReader); err != nil {
+		log.Fatalf("DB/log alignment check failed: %v", err)
+	}
+	log.Printf("DB/log alignment check passed")
+
 	anchorWorker := initAnchorWorker(ctx, logReader, *anchorFile, *anchorInterval)
 
 	// 2. Setup Handlers
