@@ -13,5 +13,3 @@ type NotaryHandler struct {
 func NewNotaryHandler(a *tessera.Appender, i *Indexer, r tessera.LogReader) *NotaryHandler {
 	return &NotaryHandler{appender: a, indexer: i, reader: r}
 }
-
-const EntryBundleWidth uint64 = 256

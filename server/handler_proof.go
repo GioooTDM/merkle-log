@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"os"
 
+	"merkle-log/server/internal/logread"
+
 	tclient "github.com/transparency-dev/tessera/client"
 )
 
@@ -50,7 +52,7 @@ func (h *NotaryHandler) GetProof(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Checkpoint pubblicato -> tree size "commit-tato"
-	cpRaw, cp, err := readPublishedCheckpoint(r.Context(), h.reader)
+	cpRaw, cp, err := logread.ReadPublishedCheckpoint(r.Context(), h.reader)
 	if err != nil {
 		http.Error(w, "Checkpoint not available", http.StatusServiceUnavailable)
 		return

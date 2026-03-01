@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"merkle-log/server/internal/logread"
 )
 
 func parseIndexFromPath(path, prefix string) (uint64, error) {
@@ -37,11 +39,11 @@ func jsonResponse(w http.ResponseWriter, data any) {
 }
 
 // readEntryByIndex keeps the handler-facing entry lookup API.
-// The protocol-level read path is centralized in log_read_helpers.go.
+// The protocol-level read path is centralized in internal/logread.
 func (h *NotaryHandler) readEntryByIndex(ctx context.Context, idx uint64) ([]byte, error) {
-	size, err := publishedTreeSize(ctx, h.reader)
+	size, err := logread.PublishedTreeSize(ctx, h.reader)
 	if err != nil {
 		return nil, err
 	}
-	return readLogEntryByIndex(ctx, h.reader, size, idx)
+	return logread.ReadLogEntryByIndex(ctx, h.reader, size, idx)
 }

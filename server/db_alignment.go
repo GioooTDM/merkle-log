@@ -9,6 +9,8 @@ import (
 	"os"
 	"strings"
 
+	"merkle-log/server/internal/logread"
+
 	"github.com/transparency-dev/tessera"
 )
 
@@ -26,7 +28,7 @@ func (idx *Indexer) ValidateAlignedWithLog(ctx context.Context, reader tessera.L
 		return fmt.Errorf("nil log reader")
 	}
 
-	size, err := publishedTreeSize(ctx, reader)
+	size, err := logread.PublishedTreeSize(ctx, reader)
 	if err != nil {
 		return err
 	}
@@ -80,7 +82,7 @@ func (idx *Indexer) checkSingleEntry(ctx context.Context, reader tessera.LogRead
 		return err
 	}
 
-	entryRaw, err := readLogEntryByIndex(ctx, reader, treeSize, logIndex)
+	entryRaw, err := logread.ReadLogEntryByIndex(ctx, reader, treeSize, logIndex)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("db/log mismatch: log entry missing at index=%d", logIndex)

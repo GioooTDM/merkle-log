@@ -1,4 +1,4 @@
-package main
+package logread
 
 import (
 	"context"
@@ -10,9 +10,8 @@ import (
 	"github.com/transparency-dev/tessera/api/layout"
 )
 
-// These helpers are the single protocol-level read path for checkpoint/tree-size/entries.
-// Handler and DB alignment code should call these functions instead of duplicating logic.
-func readPublishedCheckpoint(ctx context.Context, reader tessera.LogReader) ([]byte, formatsLog.Checkpoint, error) {
+// ReadPublishedCheckpoint reads and parses the latest published checkpoint.
+func ReadPublishedCheckpoint(ctx context.Context, reader tessera.LogReader) ([]byte, formatsLog.Checkpoint, error) {
 	cpRaw, err := reader.ReadCheckpoint(ctx)
 	if err != nil {
 		return nil, formatsLog.Checkpoint{}, err
@@ -24,24 +23,24 @@ func readPublishedCheckpoint(ctx context.Context, reader tessera.LogReader) ([]b
 	return cpRaw, cp, nil
 }
 
-func publishedTreeSize(ctx context.Context, reader tessera.LogReader) (uint64, error) {
-	_, cp, err := readPublishedCheckpoint(ctx, reader)
+// PublishedTreeSize returns the size committed by the latest published checkpoint.
+func PublishedTreeSize(ctx context.Context, reader tessera.LogReader) (uint64, error) {
+	_, cp, err := ReadPublishedCheckpoint(ctx, reader)
 	if err != nil {
 		return 0, err
 	}
 	return cp.Size, nil
 }
 
-// readLogEntryByIndex legge una singola entry dal log dato il suo indice assoluto.
-// Tenta prima la lettura con tile parziale; se fallisce, riprova con tile completo
-// (caso in cui il tile è stato nel frattempo completato da un'altra scrittura).
-func readLogEntryByIndex(ctx context.Context, reader tessera.LogReader, treeSize, idx uint64) ([]byte, error) {
+// ReadLogEntryByIndex reads a single log entry for a fixed, published tree size snapshot.
+func ReadLogEntryByIndex(ctx context.Context, reader tessera.LogReader, treeSize, idx uint64) ([]byte, error) {
 	if idx >= treeSize {
 		return nil, os.ErrNotExist
 	}
 
-	bundleIdx := idx / EntryBundleWidth
-	offset := idx % EntryBundleWidth
+	bundleWidth := uint64(layout.EntryBundleWidth)
+	bundleIdx := idx / bundleWidth
+	offset := idx % bundleWidth
 	partial := layout.PartialTileSize(0 /*level*/, bundleIdx, treeSize) // p = partial size (0 se bundle pieno, 1..255 se parziale)
 
 	raw, err := reader.ReadEntryBundle(ctx, bundleIdx, partial)
