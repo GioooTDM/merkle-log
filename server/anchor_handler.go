@@ -3,9 +3,11 @@ package main
 import (
 	"log"
 	"net/http"
+
+	"merkle-log/server/internal/anchor"
 )
 
-func forceAnchorHandler(worker *AnchorWorker) http.HandlerFunc {
+func forceAnchorHandler(worker *anchor.Worker) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed. Only POST", http.StatusMethodNotAllowed)

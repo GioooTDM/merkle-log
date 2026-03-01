@@ -1,4 +1,4 @@
-package main
+package anchor
 
 import (
 	"context"
@@ -13,17 +13,16 @@ import (
 	"github.com/transparency-dev/tessera"
 )
 
-// AnchorWorker periodically publishes the latest checkpoint
-// through an AnchorPublisher.
-type AnchorWorker struct {
+// Worker periodically publishes the latest checkpoint through a Publisher.
+type Worker struct {
 	reader    tessera.LogReader
-	publisher AnchorPublisher
+	publisher Publisher
 	interval  time.Duration
 	lastHash  string
 	mu        sync.Mutex
 }
 
-func NewAnchorWorker(reader tessera.LogReader, publisher AnchorPublisher, interval time.Duration) (*AnchorWorker, error) {
+func NewWorker(reader tessera.LogReader, publisher Publisher, interval time.Duration) (*Worker, error) {
 	if reader == nil {
 		return nil, fmt.Errorf("nil log reader")
 	}
@@ -33,14 +32,14 @@ func NewAnchorWorker(reader tessera.LogReader, publisher AnchorPublisher, interv
 	if interval <= 0 {
 		return nil, fmt.Errorf("anchor interval must be > 0")
 	}
-	return &AnchorWorker{
+	return &Worker{
 		reader:    reader,
 		publisher: publisher,
 		interval:  interval,
 	}, nil
 }
 
-func (w *AnchorWorker) Run(ctx context.Context) {
+func (w *Worker) Run(ctx context.Context) {
 	// First publication on startup, then periodic ticks.
 	if err := w.anchorOnce(ctx); err != nil {
 		// Do not stop the worker on one failure.
@@ -62,15 +61,15 @@ func (w *AnchorWorker) Run(ctx context.Context) {
 	}
 }
 
-// buildAnchorRecord parses cpRaw into a structured AnchorRecord.
+// buildRecord parses cpRaw into a structured Record.
 // cpHash is the SHA-256 hex digest of cpRaw, already computed by the caller.
-func buildAnchorRecord(cpRaw []byte, cpHash string) (AnchorRecord, error) {
+func buildRecord(cpRaw []byte, cpHash string) (Record, error) {
 	var cp formatsLog.Checkpoint
 	if _, err := cp.Unmarshal(cpRaw); err != nil {
-		return AnchorRecord{}, fmt.Errorf("parse checkpoint: %w", err)
+		return Record{}, fmt.Errorf("parse checkpoint: %w", err)
 	}
 
-	return AnchorRecord{
+	return Record{
 		PublishedAtUTC: time.Now().UTC().Format(time.RFC3339Nano),
 		TreeSize:       cp.Size,
 		RootHashHex:    hex.EncodeToString(cp.Hash),
@@ -79,40 +78,40 @@ func buildAnchorRecord(cpRaw []byte, cpHash string) (AnchorRecord, error) {
 	}, nil
 }
 
-func (w *AnchorWorker) anchorOnce(ctx context.Context) error {
+func (w *Worker) anchorOnce(ctx context.Context) error {
 	_, _, err := w.publishCheckpoint(ctx, false)
 	return err
 }
 
 // PublishNow forces an immediate publication even if the interval has not elapsed.
-func (w *AnchorWorker) PublishNow(ctx context.Context) (AnchorRecord, error) {
+func (w *Worker) PublishNow(ctx context.Context) (Record, error) {
 	rec, _, err := w.publishCheckpoint(ctx, true)
 	return rec, err
 }
 
-func (w *AnchorWorker) publishCheckpoint(ctx context.Context, force bool) (AnchorRecord, bool, error) {
+func (w *Worker) publishCheckpoint(ctx context.Context, force bool) (Record, bool, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	cpRaw, err := w.reader.ReadCheckpoint(ctx)
 	if err != nil {
-		return AnchorRecord{}, false, fmt.Errorf("read checkpoint: %w", err)
+		return Record{}, false, fmt.Errorf("read checkpoint: %w", err)
 	}
 
 	h := sha256.Sum256(cpRaw)
 	cpHash := hex.EncodeToString(h[:])
 	if !force && cpHash == w.lastHash {
 		// No new checkpoint to publish.
-		return AnchorRecord{}, false, nil
+		return Record{}, false, nil
 	}
 
-	rec, err := buildAnchorRecord(cpRaw, cpHash)
+	rec, err := buildRecord(cpRaw, cpHash)
 	if err != nil {
-		return AnchorRecord{}, false, err
+		return Record{}, false, err
 	}
 
 	if err := w.publisher.PublishCheckpoint(ctx, rec); err != nil {
-		return AnchorRecord{}, false, err
+		return Record{}, false, err
 	}
 	w.lastHash = cpHash
 	return rec, true, nil

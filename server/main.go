@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"merkle-log/server/internal/anchor"
+
 	"github.com/transparency-dev/tessera"
 	"github.com/transparency-dev/tessera/storage/posix"
 	"golang.org/x/mod/sumdb/note"
@@ -91,17 +93,17 @@ func main() {
 
 // initAnchorWorker creates and starts the anchor worker if anchorFile is set.
 // Returns nil if anchoring is disabled.
-func initAnchorWorker(ctx context.Context, logReader tessera.LogReader, anchorFile string, interval time.Duration) *AnchorWorker {
+func initAnchorWorker(ctx context.Context, logReader tessera.LogReader, anchorFile string, interval time.Duration) *anchor.Worker {
 	if anchorFile == "" {
 		return nil
 	}
 
-	publisher, err := NewFileAnchorPublisher(anchorFile)
+	publisher, err := anchor.NewFilePublisher(anchorFile)
 	if err != nil {
 		log.Fatalf("Failed to init anchor publisher: %v", err)
 	}
 
-	worker, err := NewAnchorWorker(logReader, publisher, interval)
+	worker, err := anchor.NewWorker(logReader, publisher, interval)
 	if err != nil {
 		log.Fatalf("Failed to init anchor worker: %v", err)
 	}

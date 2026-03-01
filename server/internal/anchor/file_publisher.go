@@ -1,4 +1,4 @@
-package main
+package anchor
 
 import (
 	"context"
@@ -8,12 +8,12 @@ import (
 	"path/filepath"
 )
 
-// FileAnchorPublisher is a fake blockchain publisher backed by a text file (JSONL).
-type FileAnchorPublisher struct {
+// FilePublisher is a fake blockchain publisher backed by a text file (JSONL).
+type FilePublisher struct {
 	path string
 }
 
-func NewFileAnchorPublisher(path string) (*FileAnchorPublisher, error) {
+func NewFilePublisher(path string) (*FilePublisher, error) {
 	if path == "" {
 		return nil, fmt.Errorf("empty anchor file path")
 	}
@@ -21,10 +21,10 @@ func NewFileAnchorPublisher(path string) (*FileAnchorPublisher, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("create anchor file dir: %w", err)
 	}
-	return &FileAnchorPublisher{path: path}, nil
+	return &FilePublisher{path: path}, nil
 }
 
-func (p *FileAnchorPublisher) PublishCheckpoint(ctx context.Context, rec AnchorRecord) error {
+func (p *FilePublisher) PublishCheckpoint(ctx context.Context, rec Record) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
