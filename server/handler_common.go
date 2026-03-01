@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -11,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"merkle-log/server/internal/hashutil"
 	"merkle-log/server/internal/logread"
 )
 
@@ -27,8 +26,7 @@ func parseIndexFromPath(path, prefix string) (uint64, error) {
 }
 
 func hashBytes(data []byte) string {
-	h := sha256.Sum256(data)
-	return hex.EncodeToString(h[:])
+	return hashutil.SHA256Hex(data)
 }
 
 func jsonResponse(w http.ResponseWriter, data any) {

@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"time"
 
+	"merkle-log/server/internal/event"
+
 	"github.com/transparency-dev/tessera"
 )
 
@@ -22,7 +24,7 @@ func (h *NotaryHandler) AddEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	parsed, canonicalBody, err := prepareAddEventForNotarization(body, time.Now().UTC())
+	parsed, canonicalBody, err := event.PrepareAddEventForNotarization(body, time.Now().UTC())
 	if err != nil {
 		http.Error(w, "Invalid add payload: "+err.Error(), http.StatusBadRequest)
 		return

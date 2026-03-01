@@ -2,15 +2,14 @@ package index
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"strings"
 
+	"merkle-log/server/internal/hashutil"
 	"merkle-log/server/internal/logread"
 
 	"github.com/transparency-dev/tessera"
@@ -158,7 +157,7 @@ func validateIndexedRowAgainstEntry(idx uint64, row indexedRow, entryRaw []byte)
 
 	logDocHash := ""
 	if entry.PayloadHash != nil && strings.TrimSpace(entry.PayloadHash.Value) != "" {
-		h, err := parsePayloadHashValue(entry.PayloadHash.Value)
+		h, err := hashutil.ParsePayloadHashValue(entry.PayloadHash.Value)
 		if err != nil {
 			return fmt.Errorf("db/log mismatch at index=%d: invalid payload_hash in log entry: %w", idx, err)
 		}
@@ -168,37 +167,10 @@ func validateIndexedRowAgainstEntry(idx uint64, row indexedRow, entryRaw []byte)
 		return fmt.Errorf("db/log mismatch at index=%d: doc_hash db=%q log=%q", idx, row.DocHash, logDocHash)
 	}
 
-	logLeafHash := hashBytes(entryRaw)
+	logLeafHash := hashutil.SHA256Hex(entryRaw)
 	if strings.ToLower(strings.TrimSpace(row.LeafHash)) != logLeafHash {
 		return fmt.Errorf("db/log mismatch at index=%d: leaf_hash db=%q log=%q", idx, row.LeafHash, logLeafHash)
 	}
 
 	return nil
-}
-
-func parsePayloadHashValue(v string) (string, error) {
-	s := strings.TrimSpace(v)
-	if s == "" {
-		return "", fmt.Errorf("payload_hash.value is required")
-	}
-
-	lower := strings.ToLower(s)
-	if !strings.HasPrefix(lower, "hex:") {
-		return "", fmt.Errorf(`payload_hash.value must use "hex:<digest>" format`)
-	}
-	hexPart := lower[len("hex:"):]
-	if len(hexPart) != 64 {
-		return "", fmt.Errorf("payload_hash.value must contain 64 hex chars for sha-256")
-	}
-
-	raw, err := hex.DecodeString(hexPart)
-	if err != nil || len(raw) != 32 {
-		return "", fmt.Errorf("payload_hash.value is not valid sha-256 hex")
-	}
-	return hexPart, nil
-}
-
-func hashBytes(data []byte) string {
-	h := sha256.Sum256(data)
-	return hex.EncodeToString(h[:])
 }

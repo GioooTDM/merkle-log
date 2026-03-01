@@ -1,9 +1,8 @@
 // TODO: impostare una dimensione massima per il body (es. 3KB)
-package main
+package event
 
 import (
 	"bytes"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,13 +10,15 @@ import (
 	"strings"
 	"time"
 
+	"merkle-log/server/internal/hashutil"
+
 	jsoncanonicalizer "github.com/cyberphone/json-canonicalization/go/src/webpki.org/jsoncanonicalizer"
 	"github.com/google/uuid"
 )
 
 const eventSchema = "pa-notary-event@1"
 
-type validatedAddEvent struct {
+type PreparedAddEvent struct {
 	DocUID  string
 	EventID string
 	DocHash string
@@ -65,35 +66,35 @@ type addEventIssuer struct {
 	Name     string `json:"name,omitempty"`
 }
 
-func prepareAddEventForNotarization(raw []byte, now time.Time) (validatedAddEvent, []byte, error) {
+func PrepareAddEventForNotarization(raw []byte, now time.Time) (PreparedAddEvent, []byte, error) {
 	if len(raw) == 0 {
-		return validatedAddEvent{}, nil, fmt.Errorf("empty body")
+		return PreparedAddEvent{}, nil, fmt.Errorf("empty body")
 	}
 
 	if err := rejectServerManagedFields(raw); err != nil {
-		return validatedAddEvent{}, nil, err
+		return PreparedAddEvent{}, nil, err
 	}
 
 	var ev addEventClientPayload
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&ev); err != nil {
-		return validatedAddEvent{}, nil, fmt.Errorf("invalid JSON structure: %w", err)
+		return PreparedAddEvent{}, nil, fmt.Errorf("invalid JSON structure: %w", err)
 	}
 	var trailing any
 	if err := dec.Decode(&trailing); err != nil && !errors.Is(err, io.EOF) {
-		return validatedAddEvent{}, nil, fmt.Errorf("invalid trailing data in JSON body")
+		return PreparedAddEvent{}, nil, fmt.Errorf("invalid trailing data in JSON body")
 	}
 
 	docHash, issuedAt, err := validateClientEventSemantics(ev)
 	if err != nil {
-		return validatedAddEvent{}, nil, err
+		return PreparedAddEvent{}, nil, err
 	}
 
 	// TODO: gli orologi potrebbero non essere sincronizzati, valutare se accettare un margine di tolleranza (es. 5 secondi)
 	recordedAt := now.UTC()
 	if recordedAt.Before(issuedAt) {
-		return validatedAddEvent{}, nil, fmt.Errorf("issued_at cannot be in the future")
+		return PreparedAddEvent{}, nil, fmt.Errorf("issued_at cannot be in the future")
 	}
 
 	eventID := uuid.NewString()
@@ -132,15 +133,15 @@ func prepareAddEventForNotarization(raw []byte, now time.Time) (validatedAddEven
 
 	storedRaw, err := json.Marshal(stored)
 	if err != nil {
-		return validatedAddEvent{}, nil, fmt.Errorf("failed to serialize event: %w", err)
+		return PreparedAddEvent{}, nil, fmt.Errorf("failed to serialize event: %w", err)
 	}
 
 	canon, err := jsoncanonicalizer.Transform(storedRaw)
 	if err != nil {
-		return validatedAddEvent{}, nil, fmt.Errorf("failed to canonicalize event JSON: %w", err)
+		return PreparedAddEvent{}, nil, fmt.Errorf("failed to canonicalize event JSON: %w", err)
 	}
 
-	return validatedAddEvent{
+	return PreparedAddEvent{
 		DocUID:  stored.DocUID,
 		EventID: eventID,
 		DocHash: docHash,
@@ -202,7 +203,7 @@ func validateClientEventSemantics(ev addEventClientPayload) (string, time.Time, 
 		if err := validatePayloadHash(*ev.PayloadHash); err != nil {
 			return "", time.Time{}, err
 		}
-		docHash, err := parsePayloadHashValue(ev.PayloadHash.Value)
+		docHash, err := hashutil.ParsePayloadHashValue(ev.PayloadHash.Value)
 		if err != nil {
 			return "", time.Time{}, err
 		}
@@ -221,7 +222,7 @@ func validateClientEventSemantics(ev addEventClientPayload) (string, time.Time, 
 		if err := validatePayloadHash(*ev.PayloadHash); err != nil {
 			return "", time.Time{}, err
 		}
-		docHash, err := parsePayloadHashValue(ev.PayloadHash.Value)
+		docHash, err := hashutil.ParsePayloadHashValue(ev.PayloadHash.Value)
 		if err != nil {
 			return "", time.Time{}, err
 		}
@@ -235,7 +236,7 @@ func validateClientEventSemantics(ev addEventClientPayload) (string, time.Time, 
 			if err := validatePayloadHash(*ev.PayloadHash); err != nil {
 				return "", time.Time{}, err
 			}
-			docHash, err := parsePayloadHashValue(ev.PayloadHash.Value)
+			docHash, err := hashutil.ParsePayloadHashValue(ev.PayloadHash.Value)
 			if err != nil {
 				return "", time.Time{}, err
 			}
@@ -257,32 +258,10 @@ func validatePayloadHash(ph addEventPayloadHash) error {
 		return fmt.Errorf("payload_hash.alg must be sha-256")
 	}
 
-	if _, err := parsePayloadHashValue(ph.Value); err != nil {
+	if _, err := hashutil.ParsePayloadHashValue(ph.Value); err != nil {
 		return err
 	}
 	return nil
-}
-
-func parsePayloadHashValue(v string) (string, error) {
-	s := strings.TrimSpace(v)
-	if s == "" {
-		return "", fmt.Errorf("payload_hash.value is required")
-	}
-
-	lower := strings.ToLower(s)
-	if !strings.HasPrefix(lower, "hex:") {
-		return "", fmt.Errorf(`payload_hash.value must use "hex:<digest>" format`)
-	}
-	hexPart := lower[len("hex:"):]
-	if len(hexPart) != 64 {
-		return "", fmt.Errorf("payload_hash.value must contain 64 hex chars for sha-256")
-	}
-
-	raw, err := hex.DecodeString(hexPart)
-	if err != nil || len(raw) != 32 {
-		return "", fmt.Errorf("payload_hash.value is not valid sha-256 hex")
-	}
-	return hexPart, nil
 }
 
 func requireUUIDv4(field, value string) error {
