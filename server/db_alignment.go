@@ -6,14 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 
-	formatsLog "github.com/transparency-dev/formats/log"
 	"github.com/transparency-dev/tessera"
-	"github.com/transparency-dev/tessera/api"
-	"github.com/transparency-dev/tessera/api/layout"
 )
 
 const startupTailCheckCount = 10
@@ -128,50 +124,6 @@ func (idx *Indexer) getIndexedRowByLogIndex(logIndex uint64) (indexedRow, error)
 		return indexedRow{}, fmt.Errorf("read db row for log_index=%d: %w", logIndex, err)
 	}
 	return row, nil
-}
-
-func publishedTreeSize(ctx context.Context, reader tessera.LogReader) (uint64, error) {
-	cpRaw, err := reader.ReadCheckpoint(ctx)
-	if err != nil {
-		return 0, fmt.Errorf("read checkpoint: %w", err)
-	}
-
-	var cp formatsLog.Checkpoint
-	if _, err := cp.Unmarshal(cpRaw); err != nil {
-		return 0, fmt.Errorf("parse checkpoint: %w", err)
-	}
-	return cp.Size, nil
-}
-
-// readLogEntryByIndex legge una singola entry dal log dato il suo indice assoluto.
-// Tenta prima la lettura con tile parziale; se fallisce, riprova con tile completo
-// (caso in cui il tile è stato nel frattempo completato da un'altra scrittura).
-func readLogEntryByIndex(ctx context.Context, reader tessera.LogReader, treeSize, idx uint64) ([]byte, error) {
-	if idx >= treeSize {
-		return nil, os.ErrNotExist
-	}
-
-	bundleIdx := idx / EntryBundleWidth
-	offset := idx % EntryBundleWidth
-	partial := layout.PartialTileSize(0, bundleIdx, treeSize)
-
-	raw, err := reader.ReadEntryBundle(ctx, bundleIdx, partial)
-	if err != nil && partial != 0 {
-		log.Printf("readLogEntryByIndex: partial read failed for bundle=%d partial=%d, retrying as full tile: %v", bundleIdx, partial, err)
-		raw, err = reader.ReadEntryBundle(ctx, bundleIdx, 0)
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	var eb api.EntryBundle
-	if err := eb.UnmarshalText(raw); err != nil {
-		return nil, err
-	}
-	if int(offset) >= len(eb.Entries) {
-		return nil, os.ErrNotExist
-	}
-	return eb.Entries[offset], nil
 }
 
 // logEntry è la struttura attesa per ogni entry nel log di trasparenza.
