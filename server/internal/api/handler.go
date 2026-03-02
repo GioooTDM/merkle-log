@@ -1,4 +1,4 @@
-package main
+package api
 
 import (
 	"merkle-log/server/internal/index"

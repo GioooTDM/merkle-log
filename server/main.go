@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"merkle-log/server/internal/anchor"
+	"merkle-log/server/internal/api"
 	"merkle-log/server/internal/index"
 
 	"github.com/transparency-dev/tessera"
@@ -64,18 +65,11 @@ func main() {
 	anchorWorker := initAnchorWorker(ctx, logReader, *anchorFile, *anchorInterval)
 
 	// 2. Setup Handlers
-	h := NewNotaryHandler(appender, indexer, logReader)
+	h := api.NewNotaryHandler(appender, indexer, logReader)
 	mux := http.NewServeMux()
 
 	// Registro Log API
-	mux.HandleFunc("/add", h.AddEvent)
-	mux.HandleFunc("/get-by-doc", h.GetByDoc)
-	mux.HandleFunc("/get-by-leaf", h.GetByLeaf)
-	mux.HandleFunc("/get-entry/", h.GetEntry)
-	mux.HandleFunc("/get-proof/", h.GetProof)
-	mux.HandleFunc("/get-indexes", h.GetIndexesByDocUID)
-	mux.HandleFunc("/get-entries-by-docuid", h.GetEntriesByDocUID)
-	mux.HandleFunc("/anchor/force", forceAnchorHandler(anchorWorker))
+	api.RegisterRoutes(mux, h, anchorWorker)
 
 	// Tessera File Server: espone i file generati in storage_dir
 	fs := http.FileServer(http.Dir(*storageDir))
