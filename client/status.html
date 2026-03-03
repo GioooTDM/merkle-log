@@ -40,7 +40,7 @@
           <button id="btnForceAnchor" class="btn" type="button">Pubblica checkpoint ora</button>
           <span id="forceAnchorStatus" class="muted" style="display:block; margin-top:8px;"></span>
         </div>
-        
+
         <div class="info-row">
           <span class="info-label">Last TXID:</span>
           <span class="info-value">
@@ -108,6 +108,20 @@
   <script>
     const API_BASE = "http://localhost:2025";
 
+    // --- DOM refs ---
+    const els = {
+      totalEntries:      document.getElementById("totalEntries"),
+      treeSize:          document.getElementById("treeSize"),
+      lastUpdate:        document.getElementById("lastUpdate"),
+      checkpointRaw:     document.getElementById("checkpointRaw"),
+      anchorTxLink:      document.getElementById("anchorTxLink"),
+      anchorBlockNumber: document.getElementById("anchorBlockNumber"),
+      anchoredRootHash:  document.getElementById("anchoredRootHash"),
+      btnForceAnchor:    document.getElementById("btnForceAnchor"),
+      forceAnchorStatus: document.getElementById("forceAnchorStatus"),
+    };
+
+    // --- Helpers ---
     function parseCheckpointSize(raw) {
       const lines = raw.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
       const sizeLine = lines.find((line) => /^\d+$/.test(line));
@@ -120,65 +134,66 @@
       return Math.ceil(Math.log2(treeSize)) + 1;
     }
 
-    async function loadStatus() {
-      const totalEntriesEl = document.getElementById("totalEntries");
-      const treeSizeEl = document.getElementById("treeSize");
-      const checkpointRawEl = document.getElementById("checkpointRaw");
-      const txLinkEl = document.getElementById("anchorTxLink");
-      const blockEl = document.getElementById("anchorBlockNumber");
-      const rootEl = document.getElementById("anchoredRootHash");
-
+    // --- Data loaders ---
+    async function loadCheckpoint() {
       try {
         const res = await fetch(`${API_BASE}/checkpoint`, { cache: "no-store" });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
         const raw = await res.text();
-        checkpointRawEl.textContent = raw.trim() || "(checkpoint vuoto)";
+        els.checkpointRaw.textContent = raw.trim() || "(checkpoint vuoto)";
 
         const treeSize = parseCheckpointSize(raw);
-        totalEntriesEl.textContent = String(treeSize);
-        treeSizeEl.textContent = String(merkleTreeHeight(treeSize));
+        els.totalEntries.textContent = String(treeSize);
+        els.treeSize.textContent     = String(merkleTreeHeight(treeSize));
+        //els.lastUpdate.textContent   = new Date().toLocaleTimeString("it-IT");
       } catch (err) {
-        totalEntriesEl.textContent = "n/a";
-        treeSizeEl.textContent = "n/a";
-        checkpointRawEl.textContent = `Errore caricamento checkpoint: ${err?.message || String(err)}`;
+        els.totalEntries.textContent = "n/a";
+        els.treeSize.textContent     = "n/a";
+        //els.lastUpdate.textContent   = "n/a";
+        els.checkpointRaw.textContent = `Errore caricamento checkpoint: ${err?.message || String(err)}`;
       }
+    }
 
+    async function loadAnchor() {
       try {
         const res = await fetch(`${API_BASE}/anchor/latest`, { cache: "no-store" });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const payload = await res.json();
 
-        const txid = payload?.tx_id || "";
+        const txid        = payload?.tx_id || "";
         const blockNumber = payload?.block_number;
         const rootHashHex = payload?.root_hash_hex || "";
+
         if (txid) {
-          txLinkEl.textContent = `${txid.slice(0, 10)}...${txid.slice(-8)}`;
-          txLinkEl.href = `https://mempool.space/tx/${txid}`;
+          els.anchorTxLink.textContent = `${txid.slice(0, 10)}...${txid.slice(-8)}`;
+          els.anchorTxLink.href        = `https://mempool.space/tx/${txid}`;
         } else {
-          txLinkEl.textContent = "n/a";
-          txLinkEl.href = "#";
+          els.anchorTxLink.textContent = "n/a";
+          els.anchorTxLink.href        = "#";
         }
 
-        blockEl.textContent = Number.isFinite(blockNumber)
+        els.anchorBlockNumber.textContent = Number.isFinite(blockNumber)
           ? `#${Number(blockNumber).toLocaleString("en-US")}`
           : "n/a";
-        rootEl.textContent = rootHashHex || "n/a";
-      } catch (_) {
-        txLinkEl.textContent = "n/a";
-        txLinkEl.href = "#";
-        blockEl.textContent = "n/a";
-        rootEl.textContent = "n/a";
+        els.anchoredRootHash.textContent  = rootHashHex || "n/a";
+      } catch (err) {
+        console.warn("anchor/latest non disponibile:", err?.message || String(err));
+        els.anchorTxLink.textContent      = "n/a";
+        els.anchorTxLink.href             = "#";
+        els.anchorBlockNumber.textContent = "n/a";
+        els.anchoredRootHash.textContent  = "n/a";
       }
     }
 
-    async function forceAnchorNow() {
-      const btn = document.getElementById("btnForceAnchor");
-      const statusEl = document.getElementById("forceAnchorStatus");
-      if (!btn || !statusEl) return;
+    async function loadStatus() {
+      await Promise.all([loadCheckpoint(), loadAnchor()]);
+    }
 
-      btn.disabled = true;
-      statusEl.textContent = "Pubblicazione in corso...";
+    // --- Force anchor ---
+    async function forceAnchorNow() {
+      els.btnForceAnchor.disabled      = true;
+      els.forceAnchorStatus.textContent = "Pubblicazione in corso...";
 
       try {
         const res = await fetch(`${API_BASE}/anchor/force`, {
@@ -192,17 +207,17 @@
         let payload = null;
         try { payload = JSON.parse(raw); } catch { payload = null; }
 
-        const ts = payload?.published_at_utc || "n/a";
-        statusEl.textContent = `Checkpoint pubblicato con successo (${ts}).`;
+        els.forceAnchorStatus.textContent = `Checkpoint pubblicato con successo.`;
         await loadStatus();
       } catch (err) {
-        statusEl.textContent = `Errore pubblicazione: ${err?.message || String(err)}`;
+        els.forceAnchorStatus.textContent = `Errore pubblicazione: ${err?.message || String(err)}`;
       } finally {
-        btn.disabled = false;
+        els.btnForceAnchor.disabled = false;
       }
     }
 
-    document.getElementById("btnForceAnchor")?.addEventListener("click", forceAnchorNow);
+    // --- Init ---
+    els.btnForceAnchor?.addEventListener("click", forceAnchorNow);
     loadStatus();
   </script>
 </body>
