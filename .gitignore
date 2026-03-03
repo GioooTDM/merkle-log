@@ -3,3 +3,4 @@ seed_log/seed_data/*
 AGENTS.md
 *.db
 /server/anchors/*
+/server/tessera-log/*
