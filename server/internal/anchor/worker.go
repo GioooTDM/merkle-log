@@ -89,6 +89,12 @@ func (w *Worker) PublishNow(ctx context.Context) (Record, error) {
 	return rec, err
 }
 
+// LatestPublishedCheckpoint returns the most recent published checkpoint
+// recorded by the configured publisher.
+func (w *Worker) LatestPublishedCheckpoint(ctx context.Context) (Record, error) {
+	return w.publisher.LatestCheckpoint(ctx)
+}
+
 func (w *Worker) publishCheckpoint(ctx context.Context, force bool) (Record, bool, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()

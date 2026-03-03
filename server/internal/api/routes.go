@@ -15,4 +15,5 @@ func RegisterRoutes(mux *http.ServeMux, h *NotaryHandler, anchorWorker *anchor.W
 	mux.HandleFunc("/get-indexes", h.GetIndexesByDocUID)
 	mux.HandleFunc("/get-entries-by-docuid", h.GetEntriesByDocUID)
 	mux.HandleFunc("/anchor/force", forceAnchorHandler(anchorWorker))
+	mux.HandleFunc("/anchor/latest", latestAnchorHandler(anchorWorker))
 }

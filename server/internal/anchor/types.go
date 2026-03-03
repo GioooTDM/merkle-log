@@ -1,11 +1,17 @@
 package anchor
 
-import "context"
+import (
+	"context"
+	"errors"
+)
+
+var ErrNoPublishedCheckpoint = errors.New("no published checkpoint")
 
 // Publisher is blockchain-agnostic.
 // A real implementation can publish the same record to any chain.
 type Publisher interface {
 	PublishCheckpoint(ctx context.Context, rec Record) error
+	LatestCheckpoint(ctx context.Context) (Record, error)
 }
 
 // Record represents one checkpoint publication event.

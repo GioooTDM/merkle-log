@@ -3,7 +3,9 @@ package anchor
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 )
@@ -43,4 +45,47 @@ func (p *FilePublisher) PublishCheckpoint(ctx context.Context, rec Record) error
 		return fmt.Errorf("write anchor record: %w", err)
 	}
 	return nil
+}
+
+func (p *FilePublisher) LatestCheckpoint(ctx context.Context) (Record, error) {
+	select {
+	case <-ctx.Done():
+		return Record{}, ctx.Err()
+	default:
+	}
+
+	f, err := os.Open(p.path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return Record{}, ErrNoPublishedCheckpoint
+		}
+		return Record{}, fmt.Errorf("open anchor file: %w", err)
+	}
+	defer f.Close()
+
+	dec := json.NewDecoder(f)
+	var (
+		rec   Record
+		found bool
+	)
+	for {
+		select {
+		case <-ctx.Done():
+			return Record{}, ctx.Err()
+		default:
+		}
+
+		err := dec.Decode(&rec)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return Record{}, fmt.Errorf("decode anchor record: %w", err)
+		}
+		found = true
+	}
+	if !found {
+		return Record{}, ErrNoPublishedCheckpoint
+	}
+	return rec, nil
 }

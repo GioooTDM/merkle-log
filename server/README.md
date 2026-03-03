@@ -36,6 +36,7 @@ Comportamento:
 - pubblica solo checkpoint nuovi
 - scrive un record JSON per riga (JSONL)
 - puoi forzare una pubblicazione immediata con `POST /anchor/force`
+- puoi leggere l'ultimo checkpoint notarizzato (fake blockchain) con `GET /anchor/latest`
 
 ## Note su indice SQLite
 - File: `notary_index.db` nella directory di esecuzione del processo (cwd).
