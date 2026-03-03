@@ -18,7 +18,7 @@ go run . --storage_dir="$LOG_DIR" --listen=":2025"
 - `--storage_dir` (obbligatorio): directory dei dati Tessera (checkpoint, tile, entries)
 - `--listen` (default `:2025`): porta HTTP
 - `--private_key` (opzionale): path file chiave privata; se assente usa `LOG_PRIVATE_KEY`
-- `--anchor_file` (opzionale): abilita anchoring periodico su "blockchain fake" (file di testo JSONL)
+- `--anchor_file` (opzionale): abilita anchoring periodico su "blockchain fake" (file `.txt`)
 - `--anchor_interval` (default `1h`): intervallo di pubblicazione checkpoint
 
 ## Anchoring periodico (fake blockchain)
@@ -34,7 +34,8 @@ go run . \
 Comportamento:
 - ad ogni intervallo legge il checkpoint corrente
 - pubblica solo checkpoint nuovi
-- scrive un record JSON per riga (JSONL)
+- scrive una riga testuale per record, con campi separati da spazio in questo ordine:
+  - `published_at_utc domain_separator version tree_size root_hash_hex checkpoint_hash`
 - puoi forzare una pubblicazione immediata con `POST /anchor/force`
 - puoi leggere l'ultimo checkpoint notarizzato (fake blockchain) con `GET /anchor/latest`
 

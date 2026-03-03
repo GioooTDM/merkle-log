@@ -62,19 +62,22 @@ func (w *Worker) Run(ctx context.Context) {
 }
 
 // buildRecord parses cpRaw into a structured Record.
-// cpHash is the SHA-256 hex digest of cpRaw, already computed by the caller.
-func buildRecord(cpRaw []byte, cpHash string) (Record, error) {
+// cpHash is the SHA-256 digest of cpRaw, already computed by the caller.
+func buildRecord(cpRaw []byte, cpHash [sha256.Size]byte) (Record, error) {
 	var cp formatsLog.Checkpoint
 	if _, err := cp.Unmarshal(cpRaw); err != nil {
 		return Record{}, fmt.Errorf("parse checkpoint: %w", err)
 	}
+	if len(cp.Hash) != sha256.Size {
+		return Record{}, fmt.Errorf("invalid root hash size: got %d, want %d", len(cp.Hash), sha256.Size)
+	}
 
 	return Record{
-		PublishedAtUTC: time.Now().UTC().Format(time.RFC3339Nano),
-		TreeSize:       cp.Size,
-		RootHashHex:    hex.EncodeToString(cp.Hash),
-		CheckpointHash: cpHash,
-		CheckpointRaw:  string(cpRaw),
+		DomainSeparator: PayloadPrefix,
+		Version:         PayloadVersion,
+		TreeSize:        cp.Size,
+		RootHashHex:     hex.EncodeToString(cp.Hash),
+		CheckpointHash:  hex.EncodeToString(cpHash[:]),
 	}, nil
 }
 
@@ -111,7 +114,7 @@ func (w *Worker) publishCheckpoint(ctx context.Context, force bool) (Record, boo
 		return Record{}, false, nil
 	}
 
-	rec, err := buildRecord(cpRaw, cpHash)
+	rec, err := buildRecord(cpRaw, h)
 	if err != nil {
 		return Record{}, false, err
 	}

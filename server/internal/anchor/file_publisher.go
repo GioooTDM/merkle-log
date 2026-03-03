@@ -1,16 +1,20 @@
 package anchor
 
 import (
+	"bufio"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
 )
 
-// FilePublisher is a fake blockchain publisher backed by a text file (JSONL).
+// FilePublisher is a fake blockchain publisher backed by a text file.
+// Each line is a space-separated record in this order:
+// published_at_utc domain_separator version tree_size root_hash_hex checkpoint_hash
 type FilePublisher struct {
 	path string
 }
@@ -39,9 +43,11 @@ func (p *FilePublisher) PublishCheckpoint(ctx context.Context, rec Record) error
 	}
 	defer f.Close()
 
-	enc := json.NewEncoder(f)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(rec); err != nil {
+	line, err := formatRecordLine(rec)
+	if err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(f, line); err != nil {
 		return fmt.Errorf("write anchor record: %w", err)
 	}
 	return nil
@@ -63,29 +69,66 @@ func (p *FilePublisher) LatestCheckpoint(ctx context.Context) (Record, error) {
 	}
 	defer f.Close()
 
-	dec := json.NewDecoder(f)
-	var (
-		rec   Record
-		found bool
-	)
-	for {
+	sc := bufio.NewScanner(f)
+	var lastLine string
+	for sc.Scan() {
 		select {
 		case <-ctx.Done():
 			return Record{}, ctx.Err()
 		default:
 		}
-
-		err := dec.Decode(&rec)
-		if errors.Is(err, io.EOF) {
-			break
+		line := strings.TrimSpace(sc.Text())
+		if line == "" {
+			continue
 		}
-		if err != nil {
-			return Record{}, fmt.Errorf("decode anchor record: %w", err)
-		}
-		found = true
+		lastLine = line
 	}
-	if !found {
+	if err := sc.Err(); err != nil {
+		return Record{}, fmt.Errorf("scan anchor file: %w", err)
+	}
+	if lastLine == "" {
 		return Record{}, ErrNoPublishedCheckpoint
 	}
+
+	rec, err := parseRecordLine(lastLine)
+	if err != nil {
+		return Record{}, fmt.Errorf("decode anchor record: %w", err)
+	}
 	return rec, nil
+}
+
+func formatRecordLine(rec Record) (string, error) {
+	return fmt.Sprintf(
+		"%s %s %d %d %s %s",
+		time.Now().UTC().Format(time.RFC3339Nano),
+		rec.DomainSeparator,
+		rec.Version,
+		rec.TreeSize,
+		rec.RootHashHex,
+		rec.CheckpointHash,
+	), nil
+}
+
+func parseRecordLine(line string) (Record, error) {
+	fields := strings.Fields(line)
+	if len(fields) != 6 {
+		return Record{}, fmt.Errorf("invalid field count: got %d, want 6", len(fields))
+	}
+
+	version64, err := strconv.ParseUint(fields[2], 10, 8)
+	if err != nil {
+		return Record{}, fmt.Errorf("parse version: %w", err)
+	}
+	treeSize, err := strconv.ParseUint(fields[3], 10, 64)
+	if err != nil {
+		return Record{}, fmt.Errorf("parse tree size: %w", err)
+	}
+
+	return Record{
+		DomainSeparator: fields[1],
+		Version:         uint8(version64),
+		TreeSize:        treeSize,
+		RootHashHex:     fields[4],
+		CheckpointHash:  fields[5],
+	}, nil
 }

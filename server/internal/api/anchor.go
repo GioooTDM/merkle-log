@@ -28,7 +28,8 @@ func forceAnchorHandler(worker *anchor.Worker) http.HandlerFunc {
 
 		jsonResponse(w, map[string]any{
 			"published":        true,
-			"published_at_utc": rec.PublishedAtUTC,
+			"domain_separator": rec.DomainSeparator,
+			"version":          rec.Version,
 			"tree_size":        rec.TreeSize,
 			"root_hash_hex":    rec.RootHashHex,
 			"checkpoint_hash":  rec.CheckpointHash,
@@ -59,11 +60,11 @@ func latestAnchorHandler(worker *anchor.Worker) http.HandlerFunc {
 		}
 
 		jsonResponse(w, map[string]any{
-			"published_at_utc": rec.PublishedAtUTC,
+			"domain_separator": rec.DomainSeparator,
+			"version":          rec.Version,
 			"tree_size":        rec.TreeSize,
 			"root_hash_hex":    rec.RootHashHex,
 			"checkpoint_hash":  rec.CheckpointHash,
-			"checkpoint_raw":   rec.CheckpointRaw,
 		})
 	}
 }

@@ -7,6 +7,14 @@ import (
 
 var ErrNoPublishedCheckpoint = errors.New("no published checkpoint")
 
+const (
+	// PayloadPrefix is the 4-byte domain-separation prefix required by the
+	// on-chain payload contract.
+	PayloadPrefix = "PNOT"
+	// PayloadVersion is the initial payload format version.
+	PayloadVersion byte = 0x01
+)
+
 // Publisher is blockchain-agnostic.
 // A real implementation can publish the same record to any chain.
 type Publisher interface {
@@ -15,11 +23,11 @@ type Publisher interface {
 }
 
 // Record represents one checkpoint publication event.
-// The fake blockchain writes one JSON object per line in a text file.
+// It only contains protocol-level fields shared by all publishers.
 type Record struct {
-	PublishedAtUTC string `json:"published_at_utc"`
-	TreeSize       uint64 `json:"tree_size"`
-	RootHashHex    string `json:"root_hash_hex"`
-	CheckpointHash string `json:"checkpoint_hash"`
-	CheckpointRaw  string `json:"checkpoint_raw"`
+	DomainSeparator string `json:"domain_separator"`
+	Version         uint8  `json:"version"`
+	TreeSize        uint64 `json:"tree_size"`
+	RootHashHex     string `json:"root_hash_hex"`
+	CheckpointHash  string `json:"checkpoint_hash"`
 }
