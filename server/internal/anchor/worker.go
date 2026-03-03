@@ -94,7 +94,7 @@ func (w *Worker) PublishNow(ctx context.Context) (Record, error) {
 
 // LatestPublishedCheckpoint returns the most recent published checkpoint
 // recorded by the configured publisher.
-func (w *Worker) LatestPublishedCheckpoint(ctx context.Context) (Record, error) {
+func (w *Worker) LatestPublishedCheckpoint(ctx context.Context) (AnchoredCheckpoint, error) {
 	return w.publisher.LatestCheckpoint(ctx)
 }
 

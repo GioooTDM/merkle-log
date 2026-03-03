@@ -3,6 +3,8 @@ package anchor
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -53,48 +55,57 @@ func (p *FilePublisher) PublishCheckpoint(ctx context.Context, rec Record) error
 	return nil
 }
 
-func (p *FilePublisher) LatestCheckpoint(ctx context.Context) (Record, error) {
+func (p *FilePublisher) LatestCheckpoint(ctx context.Context) (AnchoredCheckpoint, error) {
 	select {
 	case <-ctx.Done():
-		return Record{}, ctx.Err()
+		return AnchoredCheckpoint{}, ctx.Err()
 	default:
 	}
 
 	f, err := os.Open(p.path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return Record{}, ErrNoPublishedCheckpoint
+			return AnchoredCheckpoint{}, ErrNoPublishedCheckpoint
 		}
-		return Record{}, fmt.Errorf("open anchor file: %w", err)
+		return AnchoredCheckpoint{}, fmt.Errorf("open anchor file: %w", err)
 	}
 	defer f.Close()
 
 	sc := bufio.NewScanner(f)
-	var lastLine string
+	var (
+		lastLine    string
+		blockNumber uint64
+	)
 	for sc.Scan() {
 		select {
 		case <-ctx.Done():
-			return Record{}, ctx.Err()
+			return AnchoredCheckpoint{}, ctx.Err()
 		default:
 		}
 		line := strings.TrimSpace(sc.Text())
 		if line == "" {
 			continue
 		}
+		blockNumber++
 		lastLine = line
 	}
 	if err := sc.Err(); err != nil {
-		return Record{}, fmt.Errorf("scan anchor file: %w", err)
+		return AnchoredCheckpoint{}, fmt.Errorf("scan anchor file: %w", err)
 	}
 	if lastLine == "" {
-		return Record{}, ErrNoPublishedCheckpoint
+		return AnchoredCheckpoint{}, ErrNoPublishedCheckpoint
 	}
 
 	rec, err := parseRecordLine(lastLine)
 	if err != nil {
-		return Record{}, fmt.Errorf("decode anchor record: %w", err)
+		return AnchoredCheckpoint{}, fmt.Errorf("decode anchor record: %w", err)
 	}
-	return rec, nil
+	txHash := sha256.Sum256([]byte(lastLine))
+	return AnchoredCheckpoint{
+		Record:      rec,
+		TxID:        hex.EncodeToString(txHash[:]),
+		BlockNumber: blockNumber + 100000,
+	}, nil
 }
 
 func formatRecordLine(rec Record) (string, error) {

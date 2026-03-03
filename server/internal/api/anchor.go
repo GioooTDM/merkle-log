@@ -65,6 +65,8 @@ func latestAnchorHandler(worker *anchor.Worker) http.HandlerFunc {
 			"tree_size":        rec.TreeSize,
 			"root_hash_hex":    rec.RootHashHex,
 			"checkpoint_hash":  rec.CheckpointHash,
+			"tx_id":            rec.TxID,
+			"block_number":     rec.BlockNumber,
 		})
 	}
 }

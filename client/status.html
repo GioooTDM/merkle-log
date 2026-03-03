@@ -44,16 +44,16 @@
         <div class="info-row">
           <span class="info-label">Last TXID:</span>
           <span class="info-value">
-            <a href="https://mempool.space/tx/4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b" target="_blank" style="color: var(--primary);">4a5e1e4ba...deda33b</a>
+            <a id="anchorTxLink" href="#" target="_blank" style="color: var(--primary);">n/a</a>
           </span>
         </div>
         <div class="info-row">
           <span class="info-label">Ancorato al Blocco:</span>
-          <span class="info-value">#874,122</span>
+          <span id="anchorBlockNumber" class="info-value">n/a</span>
         </div>
         <div class="info-row">
           <span class="info-label">Merkle Root Ancorato:</span>
-          <span class="info-value" style="font-size: 11px;">e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855</span>
+          <span id="anchoredRootHash" class="info-value" style="font-size: 11px;">n/a</span>
         </div>
       </div>
     </section>
@@ -124,6 +124,9 @@
       const totalEntriesEl = document.getElementById("totalEntries");
       const treeSizeEl = document.getElementById("treeSize");
       const checkpointRawEl = document.getElementById("checkpointRaw");
+      const txLinkEl = document.getElementById("anchorTxLink");
+      const blockEl = document.getElementById("anchorBlockNumber");
+      const rootEl = document.getElementById("anchoredRootHash");
 
       try {
         const res = await fetch(`${API_BASE}/checkpoint`, { cache: "no-store" });
@@ -139,6 +142,33 @@
         totalEntriesEl.textContent = "n/a";
         treeSizeEl.textContent = "n/a";
         checkpointRawEl.textContent = `Errore caricamento checkpoint: ${err?.message || String(err)}`;
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/anchor/latest`, { cache: "no-store" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const payload = await res.json();
+
+        const txid = payload?.tx_id || "";
+        const blockNumber = payload?.block_number;
+        const rootHashHex = payload?.root_hash_hex || "";
+        if (txid) {
+          txLinkEl.textContent = `${txid.slice(0, 10)}...${txid.slice(-8)}`;
+          txLinkEl.href = `https://mempool.space/tx/${txid}`;
+        } else {
+          txLinkEl.textContent = "n/a";
+          txLinkEl.href = "#";
+        }
+
+        blockEl.textContent = Number.isFinite(blockNumber)
+          ? `#${Number(blockNumber).toLocaleString("en-US")}`
+          : "n/a";
+        rootEl.textContent = rootHashHex || "n/a";
+      } catch (_) {
+        txLinkEl.textContent = "n/a";
+        txLinkEl.href = "#";
+        blockEl.textContent = "n/a";
+        rootEl.textContent = "n/a";
       }
     }
 
