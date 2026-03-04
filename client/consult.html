@@ -69,7 +69,7 @@
     <section class="card">
       <div style="display: flex; justify-content: space-between; align-items: center;">
         <h3>Risultati</h3>
-        <span class="muted" style="font-size: 0.85rem;" id="resultCount">Inserisci un doc_uid e premi “Applica Filtri”</span>
+        <span class="muted" style="font-size: 0.85rem;" id="resultCount">Imposta almeno un filtro e premi “Applica Filtri”</span>
       </div>
 
       <div class="table-responsive">
@@ -110,7 +110,9 @@
       btnSearch: document.getElementById('btnSearch'),
       resultsBody: document.getElementById('resultsBody'),
       resultCount: document.getElementById('resultCount'),
-      filterUidInput: document.getElementById('filterUid')
+      filterUidInput: document.getElementById('filterUid'),
+      filterDateFromInput: document.getElementById('filterDateFrom'),
+      filterDateToInput: document.getElementById('filterDateTo')
     };
 
     const Utils = {
@@ -188,6 +190,13 @@
       async searchByDocUID(docUID) {
         const url = `${Config.API_BASE}/get-entries-by-docuid?doc_uid=${encodeURIComponent(docUID)}`;
         return this.fetchJson(url);
+      },
+
+      async searchByDate(dateFrom, dateTo) {
+        const qs = new URLSearchParams();
+        if (dateFrom) qs.set("date_from", dateFrom);
+        if (dateTo) qs.set("date_to", dateTo);
+        return this.fetchJson(`${Config.API_BASE}/get-entries-by-date?${qs.toString()}`);
       }
     };
 
@@ -208,6 +217,7 @@
         return {
           index,
           date: Utils.formatDate(ev.recorded_at || ev.issued_at),
+          dateRaw: Utils.safeStr(ev.recorded_at || ev.issued_at, ""),
           issuer: Utils.parseIssuer(ev.issuer),
           uid: Utils.safeStr(ev.doc_uid || fallbackUID),
           version: Utils.safeStr(ev.doc_version, "?"),
@@ -244,6 +254,21 @@
         return rows;
       },
 
+      filterRowsByDate(rows, dateFrom, dateTo) {
+        if (!dateFrom && !dateTo) return rows;
+
+        const fromTs = dateFrom ? Date.parse(`${dateFrom}T00:00:00Z`) : null;
+        const toTsExclusive = dateTo ? Date.parse(`${dateTo}T00:00:00Z`) + (24 * 60 * 60 * 1000) : null;
+
+        return rows.filter((row) => {
+          const ts = Date.parse(row?.dateRaw || "");
+          if (!Number.isFinite(ts)) return false;
+          if (fromTs !== null && ts < fromTs) return false;
+          if (toTsExclusive !== null && ts >= toTsExclusive) return false;
+          return true;
+        });
+      },
+
       async loadLatestNotarizedEvents(limit = 5) {
         const size = await API.getCheckpointSize();
         if (!Number.isFinite(size) || size <= 0) return [];
@@ -261,7 +286,7 @@
         DOM.resultsBody.innerHTML = "";
 
         if (!rows || rows.length === 0) {
-          DOM.resultsBody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 20px; color: #777;">Nessun documento trovato per il doc_uid indicato.</td></tr>`;
+          DOM.resultsBody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 20px; color: #777;">Nessun documento trovato con i filtri selezionati.</td></tr>`;
           DOM.resultCount.innerText = "0 risultati";
           return;
         }
@@ -299,18 +324,27 @@
 
       async handleSearch() {
         const docUID = DOM.filterUidInput.value.trim();
+        const dateFrom = DOM.filterDateFromInput.value.trim();
+        const dateTo = DOM.filterDateToInput.value.trim();
 
-        if (!docUID) {
+        if (!docUID && !dateFrom && !dateTo) {
           this.renderTable([]);
-          DOM.resultCount.innerText = "Inserisci un doc_uid per cercare";
+          DOM.resultCount.innerText = "Inserisci doc_uid o data per cercare";
           return;
         }
 
         this.setSearchLoading(true);
 
         try {
-          const resp = await API.searchByDocUID(docUID);
-          const rows = this.rowsFromApiResponse(resp);
+          let rows = [];
+          if (docUID) {
+            const resp = await API.searchByDocUID(docUID);
+            rows = this.rowsFromApiResponse(resp);
+            rows = this.filterRowsByDate(rows, dateFrom, dateTo);
+          } else {
+            const resp = await API.searchByDate(dateFrom, dateTo);
+            rows = this.rowsFromApiResponse(resp);
+          }
           this.renderTable(rows);
         } catch (err) {
           console.error(err);

@@ -19,9 +19,10 @@ import (
 const eventSchema = "pa-notary-event@1"
 
 type PreparedAddEvent struct {
-	DocUID  string
-	EventID string
-	DocHash string
+	DocUID     string
+	EventID    string
+	DocHash    string
+	RecordedAt string
 }
 
 type addEventClientPayload struct {
@@ -142,9 +143,10 @@ func PrepareAddEventForNotarization(raw []byte, now time.Time) (PreparedAddEvent
 	}
 
 	return PreparedAddEvent{
-		DocUID:  stored.DocUID,
-		EventID: eventID,
-		DocHash: docHash,
+		DocUID:     stored.DocUID,
+		EventID:    eventID,
+		DocHash:    docHash,
+		RecordedAt: stored.RecordedAt,
 	}, canon, nil
 }
 

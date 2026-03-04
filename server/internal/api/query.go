@@ -2,10 +2,12 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"sort"
 	"strings"
+	"time"
 )
 
 func requireQueryParam(w http.ResponseWriter, r *http.Request, key, missingMsg string) (string, bool) {
@@ -146,6 +148,84 @@ func (h *NotaryHandler) GetEntriesByDocUID(w http.ResponseWriter, r *http.Reques
 		"count":   len(entries),
 		"entries": entries,
 	})
+}
+
+func (h *NotaryHandler) GetEntriesByDate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed. Only GET", http.StatusMethodNotAllowed)
+		return
+	}
+
+	dateFrom := strings.TrimSpace(r.URL.Query().Get("date_from"))
+	dateTo := strings.TrimSpace(r.URL.Query().Get("date_to"))
+	if dateFrom == "" && dateTo == "" {
+		http.Error(w, "Missing date_from/date_to", http.StatusBadRequest)
+		return
+	}
+
+	fromStart, err := parseISODateStart(dateFrom)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Invalid date_from: %v", err), http.StatusBadRequest)
+		return
+	}
+	toStart, err := parseISODateStart(dateTo)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Invalid date_to: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	var toEndExclusive time.Time
+	if !toStart.IsZero() {
+		toEndExclusive = toStart.Add(24 * time.Hour)
+	}
+	if !fromStart.IsZero() && !toStart.IsZero() && fromStart.After(toStart) {
+		http.Error(w, "Invalid range: date_from must be <= date_to", http.StatusBadRequest)
+		return
+	}
+
+	indexes, err := h.indexer.GetIndexesByRecordedAtRange(fromStart, toEndExclusive)
+	if err != nil {
+		http.Error(w, "DB error", http.StatusInternalServerError)
+		return
+	}
+	if len(indexes) == 0 {
+		http.Error(w, "Not found", http.StatusNotFound)
+		return
+	}
+
+	entries := make([]json.RawMessage, 0, len(indexes))
+	okIndexes := make([]uint64, 0, len(indexes))
+	for _, idx := range indexes {
+		b, err := h.readEntryByIndex(r.Context(), idx)
+		if err != nil {
+			continue
+		}
+		entries = append(entries, json.RawMessage(b))
+		okIndexes = append(okIndexes, idx)
+	}
+	if len(entries) == 0 {
+		http.Error(w, "No entries available for selected date range", http.StatusNotFound)
+		return
+	}
+
+	jsonResponse(w, map[string]any{
+		"date_from": dateFrom,
+		"date_to":   dateTo,
+		"indexes":   okIndexes,
+		"count":     len(entries),
+		"entries":   entries,
+	})
+}
+
+func parseISODateStart(raw string) (time.Time, error) {
+	if raw == "" {
+		return time.Time{}, nil
+	}
+	t, err := time.Parse("2006-01-02", raw)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC), nil
 }
 
 func entryMatchesDocUID(raw []byte, wantDocUID string) bool {

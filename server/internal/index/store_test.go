@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func newTestIndexer(t *testing.T) *Indexer {
@@ -29,10 +30,10 @@ func TestIndexer_GetByDocHash_ReturnsLatest(t *testing.T) {
 	leaf1 := strings.Repeat("1", 64)
 	leaf2 := strings.Repeat("2", 64)
 
-	if err := idx.AddEntry("DOC-1", "evt-1", docHash, leaf1, 10); err != nil {
+	if err := idx.AddEntry("DOC-1", "evt-1", docHash, leaf1, "2026-01-01T10:00:00Z", 10); err != nil {
 		t.Fatalf("AddEntry #1 error = %v", err)
 	}
-	if err := idx.AddEntry("DOC-1", "evt-2", docHash, leaf2, 11); err != nil {
+	if err := idx.AddEntry("DOC-1", "evt-2", docHash, leaf2, "2026-01-01T10:01:00Z", 11); err != nil {
 		t.Fatalf("AddEntry #2 error = %v", err)
 	}
 
@@ -61,7 +62,7 @@ func TestIndexer_GetByLeafHash_ReturnsIndex(t *testing.T) {
 	idx := newTestIndexer(t)
 
 	leaf := strings.Repeat("1", 64)
-	if err := idx.AddEntry("DOC-1", "evt-1", strings.Repeat("a", 64), leaf, 10); err != nil {
+	if err := idx.AddEntry("DOC-1", "evt-1", strings.Repeat("a", 64), leaf, "2026-01-01T10:00:00Z", 10); err != nil {
 		t.Fatalf("AddEntry() error = %v", err)
 	}
 
@@ -86,10 +87,10 @@ func TestIndexer_GetByLeafHash_NotFound(t *testing.T) {
 func TestIndexer_GetIndexesByDocUID_ReturnsAllAscending(t *testing.T) {
 	idx := newTestIndexer(t)
 
-	if err := idx.AddEntry("DOC-1", "evt-1", strings.Repeat("a", 64), strings.Repeat("1", 64), 10); err != nil {
+	if err := idx.AddEntry("DOC-1", "evt-1", strings.Repeat("a", 64), strings.Repeat("1", 64), "2026-01-01T10:00:00Z", 10); err != nil {
 		t.Fatalf("AddEntry #1 error = %v", err)
 	}
-	if err := idx.AddEntry("DOC-1", "evt-2", strings.Repeat("a", 64), strings.Repeat("2", 64), 11); err != nil {
+	if err := idx.AddEntry("DOC-1", "evt-2", strings.Repeat("a", 64), strings.Repeat("2", 64), "2026-01-01T10:01:00Z", 11); err != nil {
 		t.Fatalf("AddEntry #2 error = %v", err)
 	}
 
@@ -118,15 +119,41 @@ func TestIndexer_GetIndexesByDocUID_NotFound(t *testing.T) {
 func TestIndexer_Constraints(t *testing.T) {
 	idx := newTestIndexer(t)
 
-	if err := idx.AddEntry("DOC-1", "evt-1", strings.Repeat("a", 64), strings.Repeat("1", 64), 7); err != nil {
+	if err := idx.AddEntry("DOC-1", "evt-1", strings.Repeat("a", 64), strings.Repeat("1", 64), "2026-01-01T10:00:00Z", 7); err != nil {
 		t.Fatalf("AddEntry() seed error = %v", err)
 	}
 
-	if err := idx.AddEntry("DOC-2", "evt-2", strings.Repeat("b", 64), strings.Repeat("2", 64), 7); err == nil {
+	if err := idx.AddEntry("DOC-2", "evt-2", strings.Repeat("b", 64), strings.Repeat("2", 64), "2026-01-01T10:01:00Z", 7); err == nil {
 		t.Fatal("expected error on duplicate log_index, got nil")
 	}
 
-	if err := idx.AddEntry("DOC-2", "evt-1", strings.Repeat("b", 64), strings.Repeat("3", 64), 8); err == nil {
+	if err := idx.AddEntry("DOC-2", "evt-1", strings.Repeat("b", 64), strings.Repeat("3", 64), "2026-01-01T10:02:00Z", 8); err == nil {
 		t.Fatal("expected error on duplicate event_id, got nil")
+	}
+}
+
+func TestIndexer_GetIndexesByRecordedAtRange(t *testing.T) {
+	idx := newTestIndexer(t)
+
+	if err := idx.AddEntry("DOC-1", "evt-1", strings.Repeat("a", 64), strings.Repeat("1", 64), "2026-01-01T10:00:00Z", 10); err != nil {
+		t.Fatalf("AddEntry #1 error = %v", err)
+	}
+	if err := idx.AddEntry("DOC-2", "evt-2", strings.Repeat("b", 64), strings.Repeat("2", 64), "2026-01-02T10:00:00Z", 11); err != nil {
+		t.Fatalf("AddEntry #2 error = %v", err)
+	}
+	if err := idx.AddEntry("DOC-3", "evt-3", strings.Repeat("c", 64), strings.Repeat("3", 64), "2026-01-03T10:00:00Z", 12); err != nil {
+		t.Fatalf("AddEntry #3 error = %v", err)
+	}
+
+	from := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 1, 3, 0, 0, 0, 0, time.UTC)
+
+	indexes, err := idx.GetIndexesByRecordedAtRange(from, to)
+	if err != nil {
+		t.Fatalf("GetIndexesByRecordedAtRange() error = %v", err)
+	}
+	want := []uint64{11}
+	if !reflect.DeepEqual(indexes, want) {
+		t.Fatalf("GetIndexesByRecordedAtRange() = %v, want %v", indexes, want)
 	}
 }
