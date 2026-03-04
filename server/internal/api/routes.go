@@ -12,6 +12,7 @@ func RegisterRoutes(mux *http.ServeMux, h *NotaryHandler, anchorWorker *anchor.W
 	mux.HandleFunc("/get-by-leaf", h.GetByLeaf)
 	mux.HandleFunc("/get-entry/", h.GetEntry)
 	mux.HandleFunc("/get-proof/", h.GetProof)
+	mux.HandleFunc("/get-consistency", h.GetConsistencyProof)
 	mux.HandleFunc("/get-indexes", h.GetIndexesByDocUID)
 	mux.HandleFunc("/get-entries-by-docuid", h.GetEntriesByDocUID)
 	mux.HandleFunc("/anchor/force", forceAnchorHandler(anchorWorker))

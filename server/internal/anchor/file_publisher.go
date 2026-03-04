@@ -104,7 +104,7 @@ func (p *FilePublisher) LatestCheckpoint(ctx context.Context) (AnchoredCheckpoin
 	return AnchoredCheckpoint{
 		Record:      rec,
 		TxID:        hex.EncodeToString(txHash[:]),
-		BlockNumber: blockNumber + 100000,
+		BlockNumber: blockNumber,
 	}, nil
 }
 

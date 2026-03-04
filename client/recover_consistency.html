@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PA Notary — Recupero Consistency Proof</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .proof-list { list-style: none; padding: 0; font-family: monospace; font-size: 0.75rem; margin: 0; }
+    .proof-item { padding: 6px 8px; border-bottom: 1px solid #eee; color: #555; overflow-x: auto; }
+    .hash-display { font-family: monospace; font-size: 0.85rem; word-break: break-all; background: #eee; padding: 10px; border-radius: 4px; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <header>
+      <h1>Consistency Proof <span class="badge">Recovery</span></h1>
+      <p class="subtitle">Recupera la proof di consistenza tra due dimensioni dell'albero</p>
+    </header>
+
+    <section class="card">
+      <h3>Parametri Richiesta</h3>
+      <div class="row">
+        <div class="col field-group">
+          <label for="fromSize">Tree Size iniziale (from)</label>
+          <input id="fromSize" type="number" min="0" step="1" placeholder="es. 10" />
+        </div>
+        <div class="col field-group">
+          <label for="toSize">Tree Size finale (to)</label>
+          <input id="toSize" type="number" min="0" step="1" placeholder="es. 50" />
+        </div>
+      </div>
+      <div class="actions">
+        <button id="btnFetchConsistency" class="btn-primary">Recupera Consistency Proof</button>
+        <button id="btnDownloadConsistency" class="btn-outline" disabled>Scarica JSON</button>
+      </div>
+      <div id="status" class="muted">In attesa di richiesta...</div>
+    </section>
+
+    <section class="card" style="margin-top:20px;">
+      <h3>Risultato</h3>
+      <div class="info-display">
+        <div class="info-row">
+          <span class="info-label">From Size:</span>
+          <span id="resFrom" class="info-value">-</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">To Size:</span>
+          <span id="resTo" class="info-value">-</span>
+        </div>
+      </div>
+
+      <p class="muted" style="margin-top:12px;">Nodi della proof (hex):</p>
+      <ul id="proofList" class="proof-list"></ul>
+
+      <p class="muted" style="margin-top:14px;">JSON completo:</p>
+      <pre id="jsonOut"><code>(nessun dato)</code></pre>
+    </section>
+
+    <nav style="margin-top: 30px; text-align: center;">
+      <a href="index.html" style="color: var(--primary); text-decoration: none; font-weight: 600;">← Torna alla Dashboard</a>
+    </nav>
+  </main>
+
+  <script>
+    const API_BASE = "http://localhost:2025";
+    const statusEl = document.getElementById("status");
+    const outEl = document.getElementById("jsonOut");
+    const listEl = document.getElementById("proofList");
+    const downloadBtn = document.getElementById("btnDownloadConsistency");
+    let lastPayload = null;
+
+    function setStatus(msg, isErr = false) {
+      statusEl.className = isErr ? "err" : "muted";
+      statusEl.textContent = msg;
+    }
+
+    function downloadJson(filename, data) {
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    document.getElementById("btnFetchConsistency").addEventListener("click", async () => {
+      const from = document.getElementById("fromSize").value.trim();
+      const to = document.getElementById("toSize").value.trim();
+      if (!from || !to) {
+        setStatus("Inserisci sia from che to.", true);
+        return;
+      }
+
+      try {
+        setStatus("Recupero proof in corso...");
+        listEl.innerHTML = "";
+        outEl.textContent = "(caricamento...)";
+        downloadBtn.disabled = true;
+
+        const res = await fetch(`${API_BASE}/get-consistency?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+        const text = await res.text();
+        if (!res.ok) throw new Error(text || `HTTP ${res.status}`);
+        const payload = JSON.parse(text);
+
+        lastPayload = payload;
+        downloadBtn.disabled = false;
+
+        document.getElementById("resFrom").textContent = String(payload.from_tree_size ?? "-");
+        document.getElementById("resTo").textContent = String(payload.to_tree_size ?? "-");
+
+        const proof = Array.isArray(payload.proof) ? payload.proof : [];
+        listEl.innerHTML = proof.length
+          ? proof.map((h) => `<li class="proof-item">${h}</li>`).join("")
+          : `<li class="proof-item">(proof vuota)</li>`;
+
+        outEl.textContent = JSON.stringify(payload, null, 2);
+        setStatus(`Proof recuperata con successo (${proof.length} nodi).`);
+      } catch (err) {
+        setStatus(`Errore: ${err?.message || String(err)}`, true);
+        outEl.textContent = String(err?.message || err);
+      }
+    });
+
+    downloadBtn.addEventListener("click", () => {
+      if (!lastPayload) return;
+      downloadJson(`consistency_proof_${lastPayload.from_tree_size}_to_${lastPayload.to_tree_size}.json`, lastPayload);
+    });
+  </script>
+</body>
+</html>

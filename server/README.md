@@ -39,6 +39,10 @@ Comportamento:
 - puoi forzare una pubblicazione immediata con `POST /anchor/force`
 - puoi leggere l'ultimo checkpoint notarizzato (fake blockchain) con `GET /anchor/latest`
 
+## Endpoint proof
+- Inclusion proof: `GET /get-proof/{log_index}`
+- Consistency proof: `GET /get-consistency?from={tree_size_a}&to={tree_size_b}`
+
 ## Note su indice SQLite
 - File: `notary_index.db` nella directory di esecuzione del processo (cwd).
 - È un indice applicativo, non la fonte di verità del log.

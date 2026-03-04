@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PA Notary — Verifica Consistency Proof</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="container">
+    <header>
+      <h1>Consistency Proof <span class="badge">Verification</span></h1>
+      <p class="subtitle">Verifica offline che un checkpoint più grande sia consistente con uno precedente</p>
+    </header>
+
+    <div class="row">
+      <section class="card col">
+        <h3>1. Carica Dati</h3>
+
+        <div class="field-group">
+          <label for="verifyMode">Modalità Verifica</label>
+          <select id="verifyMode">
+            <option value="checkpoint">Usa checkpoint (.txt)</option>
+            <option value="root">Usa root hash (hex)</option>
+          </select>
+        </div>
+
+        <div id="checkpointInputs">
+          <div class="field-group">
+            <label for="oldCheckpoint">Checkpoint precedente (.txt)</label>
+            <input id="oldCheckpoint" type="file" />
+            <p class="muted">Checkpoint della dimensione "from".</p>
+          </div>
+
+          <div class="field-group">
+            <label for="newCheckpoint">Checkpoint successivo (.txt)</label>
+            <input id="newCheckpoint" type="file" />
+            <p class="muted">Checkpoint della dimensione "to".</p>
+          </div>
+        </div>
+
+        <div id="rootInputs" style="display:none;">
+          <div class="field-group">
+            <label for="oldRootHex">Old Root Hash (hex, 64 chars)</label>
+            <input id="oldRootHex" type="text" placeholder="es. abcd... (32 byte hex)" />
+          </div>
+
+          <div class="field-group">
+            <label for="newRootHex">New Root Hash (hex, 64 chars)</label>
+            <input id="newRootHex" type="text" placeholder="es. ef01... (32 byte hex)" />
+          </div>
+        </div>
+
+        <div class="field-group">
+          <label for="consistencyProof">Consistency Proof (.json)</label>
+          <input id="consistencyProof" type="file" accept=".json" />
+        </div>
+
+        <div class="actions">
+          <button id="btnVerifyConsistency" class="btn-primary" style="width:100%;">Verifica Consistency</button>
+        </div>
+      </section>
+
+      <section class="card col">
+        <h3>2. Esito</h3>
+        <div id="verifyStatus" class="status-box status-idle">In attesa di file...</div>
+
+        <div class="info-display">
+          <div class="info-row"><span class="info-label">From Size:</span><span id="resFrom" class="info-value">-</span></div>
+          <div class="info-row"><span class="info-label">To Size:</span><span id="resTo" class="info-value">-</span></div>
+          <div class="info-row"><span class="info-label">Old Root:</span><span id="resOldRoot" class="info-value">-</span></div>
+          <div class="info-row"><span class="info-label">New Root:</span><span id="resNewRoot" class="info-value">-</span></div>
+          <div class="info-row"><span class="info-label">Proof Nodes:</span><span id="resNodes" class="info-value">-</span></div>
+        </div>
+      </section>
+    </div>
+
+    <div class="output-container">
+      <section>
+        <h3>Dettagli Tecnici</h3>
+        <pre id="details"><code>(nessun dato)</code></pre>
+      </section>
+    </div>
+
+    <nav style="margin-top: 20px; text-align: center;">
+      <a href="index.html" style="color: var(--primary); text-decoration: none; font-weight: 600;">← Torna alla Dashboard</a>
+    </nav>
+  </main>
+
+  <script>
+    const statusEl = document.getElementById("verifyStatus");
+    const detailsEl = document.getElementById("details");
+    const modeEl = document.getElementById("verifyMode");
+    const checkpointInputsEl = document.getElementById("checkpointInputs");
+    const rootInputsEl = document.getElementById("rootInputs");
+
+    function setStatus(kind, msg) {
+      statusEl.className = `status-box ${kind}`;
+      statusEl.textContent = msg;
+    }
+
+    function bytesToHex(bytes) {
+      return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+    }
+
+    function hexToBytes(hex) {
+      const h = String(hex || "").trim().replace(/^0x/, "");
+      if (!/^[0-9a-fA-F]{64}$/.test(h)) throw new Error("Hex hash non valido (attesi 32 byte)");
+      const out = new Uint8Array(32);
+      for (let i = 0; i < 32; i++) out[i] = parseInt(h.slice(i * 2, i * 2 + 2), 16);
+      return out;
+    }
+
+    function b64ToBytes(b64) {
+      const raw = atob(String(b64).trim());
+      const out = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+      return out;
+    }
+
+    async function sha256(bytes) {
+      const buf = await crypto.subtle.digest("SHA-256", bytes);
+      return new Uint8Array(buf);
+    }
+
+    async function hashNode(left32, right32) {
+      if (left32.length !== 32 || right32.length !== 32) throw new Error("hashNode richiede hash da 32 byte");
+      const inb = new Uint8Array(1 + 32 + 32);
+      inb[0] = 0x01;
+      inb.set(left32, 1);
+      inb.set(right32, 33);
+      return sha256(inb);
+    }
+
+    function equalBytes(a, b) {
+      if (a.length !== b.length) return false;
+      for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+      return true;
+    }
+
+    function isPowerOfTwo(n) {
+      return n > 0n && (n & (n - 1n)) === 0n;
+    }
+
+    function parseCheckpoint(txt) {
+      const lines = String(txt).split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+      const sizeIdx = lines.findIndex((l) => /^\d+$/.test(l));
+      if (sizeIdx < 0 || sizeIdx + 1 >= lines.length) {
+        throw new Error("Formato checkpoint non valido");
+      }
+
+      const size = BigInt(lines[sizeIdx]);
+      const root = b64ToBytes(lines[sizeIdx + 1]);
+      if (root.length !== 32) throw new Error("Root hash checkpoint non valida (attesi 32 byte base64)");
+      return { size, root };
+    }
+
+    // RFC6962 consistency verification.
+    async function verifyConsistency(firstSize, firstRoot, secondSize, secondRoot, proofHex) {
+      if (firstSize > secondSize) throw new Error("from_size > to_size");
+      if (firstSize === secondSize) {
+        return proofHex.length === 0 && equalBytes(firstRoot, secondRoot);
+      }
+      if (firstSize === 0n) return true;
+      if (!proofHex.length) return false;
+
+      const proof = proofHex.map(hexToBytes);
+
+      let fn = firstSize - 1n;
+      let sn = secondSize - 1n;
+      while ((fn & 1n) === 1n) {
+        fn >>= 1n;
+        sn >>= 1n;
+      }
+
+      let fr, sr, idx;
+      if (isPowerOfTwo(firstSize)) {
+        fr = firstRoot;
+        sr = firstRoot;
+        idx = 0;
+      } else {
+        fr = proof[0];
+        sr = proof[0];
+        idx = 1;
+      }
+
+      for (; idx < proof.length; idx++) {
+        const c = proof[idx];
+        if (sn === 0n) return false;
+
+        if ((fn & 1n) === 1n || fn === sn) {
+          fr = await hashNode(c, fr);
+          sr = await hashNode(c, sr);
+          while (fn !== 0n && (fn & 1n) === 0n) {
+            fn >>= 1n;
+            sn >>= 1n;
+          }
+        } else {
+          sr = await hashNode(sr, c);
+        }
+
+        fn >>= 1n;
+        sn >>= 1n;
+      }
+
+      return sn === 0n && equalBytes(fr, firstRoot) && equalBytes(sr, secondRoot);
+    }
+
+    async function readTextFromInput(id) {
+      const f = document.getElementById(id).files?.[0];
+      if (!f) throw new Error(`File mancante: ${id}`);
+      return f.text();
+    }
+
+    async function readJsonFromInput(id) {
+      const raw = await readTextFromInput(id);
+      return JSON.parse(raw);
+    }
+
+    modeEl.addEventListener("change", () => {
+      const mode = modeEl.value;
+      checkpointInputsEl.style.display = mode === "checkpoint" ? "block" : "none";
+      rootInputsEl.style.display = mode === "root" ? "block" : "none";
+    });
+
+    document.getElementById("btnVerifyConsistency").addEventListener("click", async () => {
+      try {
+        setStatus("status-idle", "Verifica in corso...");
+        detailsEl.textContent = "(calcolo...)";
+
+        const mode = modeEl.value;
+        const proofJson = await readJsonFromInput("consistencyProof");
+
+        const from = BigInt(proofJson.from_tree_size);
+        const to = BigInt(proofJson.to_tree_size);
+        const proof = Array.isArray(proofJson.proof) ? proofJson.proof.map((x) => String(x).toLowerCase()) : [];
+
+        let oldRootBytes;
+        let newRootBytes;
+
+        if (mode === "checkpoint") {
+          const [oldRaw, newRaw] = await Promise.all([
+            readTextFromInput("oldCheckpoint"),
+            readTextFromInput("newCheckpoint"),
+          ]);
+          const oldCP = parseCheckpoint(oldRaw);
+          const newCP = parseCheckpoint(newRaw);
+          if (oldCP.size !== from) throw new Error(`Checkpoint precedente size=${oldCP.size} ma proof from=${from}`);
+          if (newCP.size !== to) throw new Error(`Checkpoint successivo size=${newCP.size} ma proof to=${to}`);
+          oldRootBytes = oldCP.root;
+          newRootBytes = newCP.root;
+        } else {
+          oldRootBytes = hexToBytes(document.getElementById("oldRootHex").value);
+          newRootBytes = hexToBytes(document.getElementById("newRootHex").value);
+        }
+
+        const ok = await verifyConsistency(from, oldRootBytes, to, newRootBytes, proof);
+
+        document.getElementById("resFrom").textContent = from.toString();
+        document.getElementById("resTo").textContent = to.toString();
+        document.getElementById("resOldRoot").textContent = bytesToHex(oldRootBytes);
+        document.getElementById("resNewRoot").textContent = bytesToHex(newRootBytes);
+        document.getElementById("resNodes").textContent = String(proof.length);
+
+        detailsEl.textContent = JSON.stringify({
+          mode,
+          from_tree_size: from.toString(),
+          to_tree_size: to.toString(),
+          old_root_hex: bytesToHex(oldRootBytes),
+          new_root_hex: bytesToHex(newRootBytes),
+          proof_nodes: proof.length,
+          verify_ok: ok,
+        }, null, 2);
+
+        if (ok) {
+          setStatus("status-success", "✅ Consistency proof valida: il checkpoint nuovo è append-only rispetto al precedente.");
+        } else {
+          setStatus("status-error", "❌ Consistency proof NON valida.");
+        }
+      } catch (err) {
+        setStatus("status-error", `Errore: ${err?.message || String(err)}`);
+        detailsEl.textContent = String(err?.stack || err);
+      }
+    });
+  </script>
+</body>
+</html>

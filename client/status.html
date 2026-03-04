@@ -24,8 +24,8 @@
         <span id="treeSize" class="value">---</span>
       </div>
       <div class="card col stats-box">
-        <span class="label">Ultimo Checkpoint</span>
-        <span id="lastUpdate" class="value">---</span>
+        <span class="label">Dimensione Log (GB)</span>
+        <span class="value">---</span>
       </div>
     </div>
 
@@ -59,7 +59,10 @@
     </section>
 
     <section class="card" style="margin-top: 20px;">
-      <h3>Ultimo Checkpoint Firmato</h3>
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+        <h3>Ultimo Checkpoint Firmato</h3>
+        <button id="btnDownloadCheckpoint" class="btn" type="button">Scarica checkpoint</button>
+      </div>
       <div class="checkpoint-info">
         <p class="muted">Il checkpoint attesta lo stato attuale dell'albero di Merkle firmato dal log server.</p>
         <pre id="checkpointRaw"><code>In attesa di dati dal server...</code></pre>
@@ -107,18 +110,19 @@
 
   <script>
     const API_BASE = "http://localhost:2025";
+    let latestCheckpointRaw = "";
 
     // --- DOM refs ---
     const els = {
       totalEntries:      document.getElementById("totalEntries"),
       treeSize:          document.getElementById("treeSize"),
-      lastUpdate:        document.getElementById("lastUpdate"),
       checkpointRaw:     document.getElementById("checkpointRaw"),
       anchorTxLink:      document.getElementById("anchorTxLink"),
       anchorBlockNumber: document.getElementById("anchorBlockNumber"),
       anchoredRootHash:  document.getElementById("anchoredRootHash"),
       btnForceAnchor:    document.getElementById("btnForceAnchor"),
       forceAnchorStatus: document.getElementById("forceAnchorStatus"),
+      btnDownloadCheckpoint: document.getElementById("btnDownloadCheckpoint"),
     };
 
     // --- Helpers ---
@@ -141,16 +145,16 @@
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
         const raw = await res.text();
+        latestCheckpointRaw = raw;
         els.checkpointRaw.textContent = raw.trim() || "(checkpoint vuoto)";
 
         const treeSize = parseCheckpointSize(raw);
         els.totalEntries.textContent = String(treeSize);
         els.treeSize.textContent     = String(merkleTreeHeight(treeSize));
-        //els.lastUpdate.textContent   = new Date().toLocaleTimeString("it-IT");
       } catch (err) {
+        latestCheckpointRaw = "";
         els.totalEntries.textContent = "n/a";
         els.treeSize.textContent     = "n/a";
-        //els.lastUpdate.textContent   = "n/a";
         els.checkpointRaw.textContent = `Errore caricamento checkpoint: ${err?.message || String(err)}`;
       }
     }
@@ -216,8 +220,31 @@
       }
     }
 
+    async function downloadLatestCheckpoint() {
+      try {
+        let raw = latestCheckpointRaw;
+        if (!raw) {
+          const res = await fetch(`${API_BASE}/checkpoint`, { cache: "no-store" });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          raw = await res.text();
+        }
+
+        const blob = new Blob([raw], { type: "text/plain;charset=utf-8" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "checkpoint-latest.tlog-checkpoint";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(a.href);
+      } catch (err) {
+        alert(`Errore download checkpoint: ${err?.message || String(err)}`);
+      }
+    }
+
     // --- Init ---
     els.btnForceAnchor?.addEventListener("click", forceAnchorNow);
+    els.btnDownloadCheckpoint?.addEventListener("click", downloadLatestCheckpoint);
     loadStatus();
   </script>
 </body>
