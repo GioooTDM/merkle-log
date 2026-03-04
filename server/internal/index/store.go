@@ -36,6 +36,11 @@ func New(dbPath string) (*Indexer, error) {
 		return nil, err
 	}
 
+	// IMPORTANTE!!!
+	// SQLite non supporta writer concorrenti: limitare il pool a una connessione
+	// serializza le scritture in Go prima che raggiungano il file, evitando SQLITE_BUSY.
+	db.SetMaxOpenConns(1)
+
 	if err := createNotaryIndexSchema(db); err != nil {
 		db.Close()
 		return nil, err
