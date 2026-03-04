@@ -1,7 +1,4 @@
-// go run populate_log.go -url http://localhost:2025/add -out ./seed_data
-
-// TODO: estrarre magic strings
-
+// go run main.go -url http://localhost:2025/add -out ./seed_data
 package main
 
 import (
@@ -13,7 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	mathrand "math/rand"
+	"math/rand"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -83,6 +80,18 @@ type SummaryRow struct {
 	PDFHashHex    string `json:"payload_hash_hex"`
 }
 
+const (
+	numCreateDocs = 20 // numero di documenti CREATE generati
+	numChosenDocs = 5  // documenti che ricevono UPDATE
+	eventSchema   = "pa-notary-event@1"
+	docUIDPrefix  = "PROT/2026"
+	docUIDBaseNum = 10000
+)
+
+// updatesPerChosenDoc definisce quanti UPDATE riceve ciascuno dei numChosenDocs documenti.
+// len(updatesPerChosenDoc) deve essere == numChosenDocs.
+var updatesPerChosenDoc = []int{1, 2, 2, 3, 4}
+
 func main() {
 	var (
 		baseURL   = flag.String("url", "http://localhost:2025/add", "Notary endpoint URL (POST)")
@@ -97,7 +106,7 @@ func main() {
 		panic(fmt.Errorf("invalid -days=%d: must be >= 0", *days))
 	}
 
-	mathrand.Seed(*seed)
+	rng := rand.New(rand.NewSource(*seed))
 
 	absOut, err := filepath.Abs(*outDir)
 	must(err)
@@ -115,10 +124,8 @@ func main() {
 	// Pianifica la distribuzione di issued_at:
 	// - days=0  -> usa time.Now() per ogni evento
 	// - days>0  -> distribuisce in ordine sugli ultimi N giorni
-	const N = 20
-	updatesPerDoc := []int{1, 2, 2, 3, 4}
-	totalEvents := N
-	for _, n := range updatesPerDoc {
+	totalEvents := numCreateDocs
+	for _, n := range updatesPerChosenDoc {
 		totalEvents += n
 	}
 	issuedAtPlan := newIssuedAtPlanner(*days, totalEvents)
@@ -132,45 +139,47 @@ func main() {
 		fmt.Printf("[seed] issued_at in data corrente (days=0)\n")
 	}
 
-	// 1) CREA 20 PDF + CREATE events
-	states := make([]DocState, 0, N)
-	summary := make([]SummaryRow, 0, N+5)
+	states, summary := runCreates(ctx, client, *baseURL, absOut, issuer, &issuedAtPlan)
+	summary = append(summary, runUpdates(ctx, client, *baseURL, absOut, issuer, &issuedAtPlan, states, rng)...)
 
-	for i := 1; i <= N; i++ {
-		docUID := fmt.Sprintf("PROT/2026/%05d", 10000+i)
-		version := 1
+	sumPath := filepath.Join(absOut, "summary.json")
+	must(os.WriteFile(sumPath, mustJSON(summary), 0o644))
+	fmt.Printf("\nOK. Output in: %s\n- PDF: %s\n- Event JSON: %s\n- Summary: %s\n",
+		absOut, filepath.Join(absOut, "pdf"), filepath.Join(absOut, "event"), sumPath)
+}
 
-		pdfName := fmt.Sprintf("doc_%02d_v%d.pdf", i, version)
+func runCreates(ctx context.Context, client *http.Client, baseURL, absOut string, issuer Issuer, plan *issuedAtPlanner) ([]DocState, []SummaryRow) {
+	states := make([]DocState, 0, numCreateDocs)
+	summary := make([]SummaryRow, 0, numCreateDocs)
+
+	for i := 1; i <= numCreateDocs; i++ {
+		docUID := fmt.Sprintf("%s/%05d", docUIDPrefix, docUIDBaseNum+i)
+		issuedAt := plan.Next()
+
+		pdfName := fmt.Sprintf("doc_%02d_v1.pdf", i)
 		pdfPath := filepath.Join(absOut, "pdf", pdfName)
-
-		lines := buildPALines(docUID, version, i, false)
-		pdfBytes := mustMakePDF(lines)
-
+		pdfBytes := mustMakePDF(buildPALines(docUID, 1, i, false, issuedAt))
 		must(os.WriteFile(pdfPath, pdfBytes, 0o644))
 
 		pdfHash := sha256.Sum256(pdfBytes)
 		pdfHashHex := hex.EncodeToString(pdfHash[:])
 
 		reqEv := AddEventRequest{
-			Schema:     "pa-notary-event@1",
-			EventType:  "CREATE",
-			DocUID:     docUID,
-			DocVersion: 1,
-			PayloadHash: PayloadHash{
-				Alg:   "sha-256",
-				Value: "hex:" + pdfHashHex,
-			},
+			Schema:      eventSchema,
+			EventType:   "CREATE",
+			DocUID:      docUID,
+			DocVersion:  1,
+			PayloadHash: PayloadHash{Alg: "sha-256", Value: "hex:" + pdfHashHex},
 			Issuer:      issuer,
-			IssuedAt:    issuedAtPlan.Next().Format(time.RFC3339Nano),
+			IssuedAt:    issuedAt.Format(time.RFC3339Nano),
 			Title:       "Atto amministrativo — Emissione",
 			Description: "Registrazione di un nuovo atto amministrativo in formato digitale (versione iniziale).",
 			Notes:       fmt.Sprintf("Documento di prova #%02d generato automaticamente.", i),
 		}
 
-		logIndex, storedEv := postEvent(ctx, client, *baseURL, reqEv)
+		logIndex, storedEv := postEvent(ctx, client, baseURL, reqEv)
 
-		// Salva l'evento effettivamente notarizzato dal server.
-		evPath := filepath.Join(absOut, "event", fmt.Sprintf("event_%02d_v%d.json", i, version))
+		evPath := filepath.Join(absOut, "event", fmt.Sprintf("event_%02d_v1.json", i))
 		must(writeJSON(evPath, storedEv))
 
 		states = append(states, DocState{
@@ -194,31 +203,28 @@ func main() {
 
 		fmt.Printf("[CREATE] %s -> log_index=%d\n", docUID, logIndex)
 	}
+	return states, summary
+}
 
-	// 2) SCEGLI 5 DOC e crea UPDATE (catene da 1,2,3 update)
-	perm := mathrand.Perm(len(states))
-	chosen := perm[:5]
-
-	// Distribuzione catena update sui 5 documenti scelti.
-	// Esempi possibili:
-	// []int{1,2,2,3,4}  -> più update totali
-	// []int{1,1,2,2,3}  -> bilanciato (tot 9 update)
-
+func runUpdates(ctx context.Context, client *http.Client, baseURL, absOut string, issuer Issuer, plan *issuedAtPlanner, states []DocState, rng *rand.Rand) []SummaryRow {
+	chosen := rng.Perm(len(states))[:numChosenDocs]
+	summary := make([]SummaryRow, 0, numChosenDocs)
 	updateSerial := 0
 
 	for j, idx := range chosen {
 		st := states[idx]
-		numUpdates := updatesPerDoc[j]
+		numUpdates := updatesPerChosenDoc[j]
 
 		for u := 1; u <= numUpdates; u++ {
 			updateSerial++
 			newVersion := st.Version + 1
+			issuedAt := plan.Next()
 
 			pdfName := fmt.Sprintf("doc_%02d_v%d_update_%d.pdf", idx+1, newVersion, u)
 			pdfPath := filepath.Join(absOut, "pdf", pdfName)
 
-			lines := buildPALines(st.DocUID, newVersion, idx+1, true)
-			lines = append(lines,
+			lines := append(
+				buildPALines(st.DocUID, newVersion, idx+1, true, issuedAt),
 				"",
 				"— AGGIORNAMENTO —",
 				fmt.Sprintf("Annotazione: rettifica ref. interno n. %d/%d.", 200+updateSerial, 2026),
@@ -235,29 +241,25 @@ func main() {
 			prevLeaf := st.PrevEventLeaf
 
 			reqEv := AddEventRequest{
-				Schema:        "pa-notary-event@1",
+				Schema:        eventSchema,
 				EventType:     "UPDATE",
 				DocUID:        st.DocUID,
 				DocVersion:    newVersion,
 				PrevEventID:   &prevID,
 				PrevEventLeaf: &prevLeaf,
-				PayloadHash: PayloadHash{
-					Alg:   "sha-256",
-					Value: "hex:" + pdfHashHex,
-				},
-				Issuer:      issuer,
-				IssuedAt:    issuedAtPlan.Next().Format(time.RFC3339Nano),
-				Title:       "Atto amministrativo — Aggiornamento",
-				Description: fmt.Sprintf("Aggiornamento del documento con modifiche minori (update %d/%d).", u, numUpdates),
-				Notes:       "Generato automaticamente per testare catena UPDATE/prev.",
+				PayloadHash:   PayloadHash{Alg: "sha-256", Value: "hex:" + pdfHashHex},
+				Issuer:        issuer,
+				IssuedAt:      issuedAt.Format(time.RFC3339Nano),
+				Title:         "Atto amministrativo — Aggiornamento",
+				Description:   fmt.Sprintf("Aggiornamento del documento con modifiche minori (update %d/%d).", u, numUpdates),
+				Notes:         "Generato automaticamente per testare catena UPDATE/prev.",
 			}
 
-			logIndex, storedEv := postEvent(ctx, client, *baseURL, reqEv)
+			logIndex, storedEv := postEvent(ctx, client, baseURL, reqEv)
 
 			evPath := filepath.Join(absOut, "event", fmt.Sprintf("event_%02d_v%d_update_%d.json", idx+1, newVersion, u))
 			must(writeJSON(evPath, storedEv))
 
-			// aggiorna stato per permettere update successivi (catena)
 			st = DocState{
 				DocUID:        st.DocUID,
 				Version:       newVersion,
@@ -277,23 +279,14 @@ func main() {
 				EventJSONPath: evPath,
 				PDFHashHex:    pdfHashHex,
 			})
-
 			fmt.Printf("[UPDATE] %s v%d -> log_index=%d (prev=%s) [%d/%d]\n",
 				st.DocUID, newVersion, logIndex, prevID, u, numUpdates)
 
-			// piccola pausa: differenzia timestamp nei file
 			time.Sleep(10 * time.Millisecond)
 		}
 	}
-
-	// 3) salva summary
-	sumPath := filepath.Join(absOut, "summary.json")
-	must(os.WriteFile(sumPath, mustJSON(summary), 0o644))
-	fmt.Printf("\nOK. Output in: %s\n- PDF: %s\n- Event JSON: %s\n- Summary: %s\n",
-		absOut, filepath.Join(absOut, "pdf"), filepath.Join(absOut, "event"), sumPath)
+	return summary
 }
-
-// ---- HTTP /add ----
 
 func postEvent(ctx context.Context, client *http.Client, url string, ev AddEventRequest) (uint64, NotaryEvent) {
 	body, err := json.Marshal(ev)
@@ -333,8 +326,6 @@ func postEvent(ctx context.Context, client *http.Client, url string, ev AddEvent
 	return addResp.LogIndex, storedEv
 }
 
-// ---- PDF generator ----
-
 func mustMakePDF(lines []string) []byte {
 	pdf, err := makePDF(lines)
 	if err != nil {
@@ -366,10 +357,7 @@ func makePDF(lines []string) ([]byte, error) {
 	return out.Bytes(), nil
 }
 
-// ---- content builders ----
-
-func buildPALines(docUID string, version int, seq int, isUpdate bool) []string {
-	now := time.Now().UTC()
+func buildPALines(docUID string, version int, seq int, isUpdate bool, issuedAt time.Time) []string {
 	prot := docUID
 	tipo := "DETERMINA DIRIGENZIALE"
 	if isUpdate {
@@ -383,7 +371,7 @@ func buildPALines(docUID string, version int, seq int, isUpdate bool) []string {
 		fmt.Sprintf("OGGETTO: %s", tipo),
 		fmt.Sprintf("Protocollo: %s", prot),
 		fmt.Sprintf("Versione documento: %d", version),
-		fmt.Sprintf("Data/ora emissione (UTC): %s", now.Format(time.RFC3339)),
+		fmt.Sprintf("Data/ora emissione (UTC): %s", issuedAt.UTC().Format(time.RFC3339)),
 		"",
 		fmt.Sprintf("Premesso che il presente atto digitale n. %02d è stato redatto ai sensi delle disposizioni vigenti, si dispone la registrazione e conservazione dell'atto nei sistemi informativi dell'Ente.", seq),
 		"",
@@ -394,8 +382,6 @@ func buildPALines(docUID string, version int, seq int, isUpdate bool) []string {
 		"Dott. Mario Rossi",
 	}
 }
-
-// ---- utils ----
 
 func must(err error) {
 	if err != nil {
