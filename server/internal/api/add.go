@@ -24,7 +24,7 @@ func (h *NotaryHandler) AddEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	parsed, canonicalBody, err := event.PrepareAddEventForNotarization(body, time.Now().UTC())
+	parsed, canonicalBody, err := event.PrepareAddEventForNotarizationWithMode(body, time.Now().UTC(), h.useIssuedAtAsRecordedAt)
 	if err != nil {
 		http.Error(w, "Invalid add payload: "+err.Error(), http.StatusBadRequest)
 		return

@@ -68,6 +68,10 @@ type addEventIssuer struct {
 }
 
 func PrepareAddEventForNotarization(raw []byte, now time.Time) (PreparedAddEvent, []byte, error) {
+	return PrepareAddEventForNotarizationWithMode(raw, now, false)
+}
+
+func PrepareAddEventForNotarizationWithMode(raw []byte, now time.Time, useIssuedAtAsRecordedAt bool) (PreparedAddEvent, []byte, error) {
 	if len(raw) == 0 {
 		return PreparedAddEvent{}, nil, fmt.Errorf("empty body")
 	}
@@ -92,9 +96,10 @@ func PrepareAddEventForNotarization(raw []byte, now time.Time) (PreparedAddEvent
 		return PreparedAddEvent{}, nil, err
 	}
 
-	// TODO: gli orologi potrebbero non essere sincronizzati, valutare se accettare un margine di tolleranza (es. 5 secondi)
 	recordedAt := now.UTC()
-	if recordedAt.Before(issuedAt) {
+	if useIssuedAtAsRecordedAt {
+		recordedAt = issuedAt.UTC()
+	} else if recordedAt.Before(issuedAt) { // TODO: gli orologi potrebbero non essere sincronizzati, valutare se accettare un margine di tolleranza (es. 5 secondi)
 		return PreparedAddEvent{}, nil, fmt.Errorf("issued_at cannot be in the future")
 	}
 

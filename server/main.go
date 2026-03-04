@@ -24,6 +24,7 @@ func main() {
 	privKeyArg := flag.String("private_key", "", "Private file key path. Se vuoto usa LOG_PRIVATE_KEY env var.")
 	anchorFile := flag.String("anchor_file", "", "Fake blockchain anchor output file (JSONL). Empty disables anchoring.")
 	anchorInterval := flag.Duration("anchor_interval", time.Hour, "Checkpoint anchor interval (e.g. 1h, 10m)")
+	devMode := flag.Bool("dev-mode", false, "DEV ONLY: usa issued_at come recorded_at. Non usare in produzione.")
 	flag.Parse()
 
 	if *storageDir == "" {
@@ -62,10 +63,18 @@ func main() {
 	}
 	log.Printf("DB/log alignment check passed")
 
+	if *devMode {
+		log.Printf("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+		log.Printf("WARNING: --dev-mode ENABLED. recorded_at will be copied from issued_at.")
+		log.Printf("WARNING: DEV MODE IS FOR DEMO/TEST ONLY. DO NOT USE IN PRODUCTION.")
+		log.Printf("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+	}
+
 	anchorWorker := initAnchorWorker(ctx, logReader, *anchorFile, *anchorInterval)
 
 	// 2. Setup Handlers
 	h := api.NewNotaryHandler(appender, indexer, logReader)
+	h.SetDevMode(*devMode)
 	mux := http.NewServeMux()
 
 	// Registro Log API

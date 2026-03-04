@@ -20,6 +20,7 @@ go run . --storage_dir="$LOG_DIR" --listen=":2025"
 - `--private_key` (opzionale): path file chiave privata; se assente usa `LOG_PRIVATE_KEY`
 - `--anchor_file` (opzionale): abilita anchoring periodico su "blockchain fake" (file `.txt`)
 - `--anchor_interval` (default `1h`): intervallo di pubblicazione checkpoint
+- `--dev-mode` (default `false`): DEV ONLY, usa `issued_at` come `recorded_at` per seed/demo
 
 ## Anchoring periodico (fake blockchain)
 
