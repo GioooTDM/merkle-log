@@ -88,10 +88,14 @@ func main() {
 		baseURL   = flag.String("url", "http://localhost:2025/add", "Notary endpoint URL (POST)")
 		outDir    = flag.String("out", "notary_seed", "Output directory")
 		seed      = flag.Int64("seed", time.Now().UnixNano(), "Random seed")
+		days      = flag.Int("days", 0, "Distribuisce gli eventi sugli ultimi N giorni. 0 = data corrente")
 		issuerID  = flag.String("issuer-id", "IPA:COMUNE-XYZ", "Issuer entity_id")
 		issuerNam = flag.String("issuer-name", "Comune di Esempio — Ufficio Protocollo", "Issuer name")
 	)
 	flag.Parse()
+	if *days < 0 {
+		panic(fmt.Errorf("invalid -days=%d: must be >= 0", *days))
+	}
 
 	mathrand.Seed(*seed)
 
@@ -108,8 +112,27 @@ func main() {
 
 	issuer := Issuer{EntityID: *issuerID, Name: *issuerNam}
 
-	// 1) CREA 20 PDF + CREATE events
+	// Pianifica la distribuzione di issued_at:
+	// - days=0  -> usa time.Now() per ogni evento
+	// - days>0  -> distribuisce in ordine sugli ultimi N giorni
 	const N = 20
+	updatesPerDoc := []int{1, 2, 2, 3, 4}
+	totalEvents := N
+	for _, n := range updatesPerDoc {
+		totalEvents += n
+	}
+	issuedAtPlan := newIssuedAtPlanner(*days, totalEvents)
+	if issuedAtPlan.distributed {
+		fmt.Printf("[seed] issued_at distribuiti negli ultimi %d giorni (%s -> %s)\n",
+			*days,
+			issuedAtPlan.start.Format(time.RFC3339),
+			issuedAtPlan.end.Format(time.RFC3339),
+		)
+	} else {
+		fmt.Printf("[seed] issued_at in data corrente (days=0)\n")
+	}
+
+	// 1) CREA 20 PDF + CREATE events
 	states := make([]DocState, 0, N)
 	summary := make([]SummaryRow, 0, N+5)
 
@@ -138,7 +161,7 @@ func main() {
 				Value: "hex:" + pdfHashHex,
 			},
 			Issuer:      issuer,
-			IssuedAt:    time.Now().UTC().Format(time.RFC3339Nano),
+			IssuedAt:    issuedAtPlan.Next().Format(time.RFC3339Nano),
 			Title:       "Atto amministrativo — Emissione",
 			Description: "Registrazione di un nuovo atto amministrativo in formato digitale (versione iniziale).",
 			Notes:       fmt.Sprintf("Documento di prova #%02d generato automaticamente.", i),
@@ -180,7 +203,6 @@ func main() {
 	// Esempi possibili:
 	// []int{1,2,2,3,4}  -> più update totali
 	// []int{1,1,2,2,3}  -> bilanciato (tot 9 update)
-	updatesPerDoc := []int{1, 2, 2, 3, 4}
 
 	updateSerial := 0
 
@@ -224,7 +246,7 @@ func main() {
 					Value: "hex:" + pdfHashHex,
 				},
 				Issuer:      issuer,
-				IssuedAt:    time.Now().UTC().Format(time.RFC3339Nano),
+				IssuedAt:    issuedAtPlan.Next().Format(time.RFC3339Nano),
 				Title:       "Atto amministrativo — Aggiornamento",
 				Description: fmt.Sprintf("Aggiornamento del documento con modifiche minori (update %d/%d).", u, numUpdates),
 				Notes:       "Generato automaticamente per testare catena UPDATE/prev.",
@@ -393,4 +415,43 @@ func writeJSON(path string, v any) error {
 		return err
 	}
 	return os.Rename(tmp, path)
+}
+
+type issuedAtPlanner struct {
+	distributed bool
+	start       time.Time
+	end         time.Time
+	step        time.Duration
+	seq         int
+}
+
+func newIssuedAtPlanner(days, totalEvents int) issuedAtPlanner {
+	if days <= 0 || totalEvents <= 0 {
+		return issuedAtPlanner{distributed: false}
+	}
+
+	now := time.Now().UTC()
+	span := time.Duration(days) * 24 * time.Hour
+	start := now.Add(-span)
+
+	step := time.Duration(0)
+	if totalEvents > 1 {
+		step = span / time.Duration(totalEvents-1)
+	}
+
+	return issuedAtPlanner{
+		distributed: true,
+		start:       start,
+		end:         now,
+		step:        step,
+	}
+}
+
+func (p *issuedAtPlanner) Next() time.Time {
+	if !p.distributed {
+		return time.Now().UTC()
+	}
+	t := p.start.Add(time.Duration(p.seq) * p.step).UTC()
+	p.seq++
+	return t
 }

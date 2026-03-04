@@ -22,6 +22,7 @@ go run ./seed_log -url http://localhost:2025/add -out ./seed_log/seed_data
 - `-url`: endpoint `POST /add`
 - `-out`: directory output dataset
 - `-seed`: seed random per riproducibilita
+- `-days`: distribuisce `issued_at` sugli ultimi N giorni (`0` = data corrente)
 - `-issuer-id`: `issuer.entity_id` degli eventi generati
 - `-issuer-name`: `issuer.name` degli eventi generati
 
