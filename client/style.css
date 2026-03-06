@@ -226,6 +226,38 @@ pre {
   font-weight: 600;
 }
 
+.proof-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-family: monospace;
+  font-size: 0.75rem;
+}
+
+.proof-item {
+  padding: 6px 8px;
+  border-bottom: 1px solid #eee;
+  color: #555;
+  overflow-x: auto;
+}
+
+.hash-display {
+  font-family: monospace;
+  font-size: 0.85rem;
+  word-break: break-all;
+  background: #eee;
+  padding: 10px;
+  border-radius: 4px;
+  margin-top: 10px;
+}
+
+.label-small {
+  font-size: 0.7rem;
+  color: #666;
+  text-transform: uppercase;
+  font-weight: bold;
+}
+
 /* Link di navigazione */
 nav a:hover {
   text-decoration: underline;
