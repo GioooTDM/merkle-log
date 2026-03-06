@@ -62,12 +62,12 @@
     </nav>
   </main>
 
-  <script>
-    const API_BASE = "http://localhost:2025";
-    const statusEl = document.getElementById("status");
-    const outEl = document.getElementById("jsonOut");
-    const listEl = document.getElementById("proofList");
-    const downloadBtn = document.getElementById("btnDownloadConsistency");
+  <script type="module">
+    import { API_BASE, el, fetchText, downloadJson } from "./common.js";
+    const statusEl = el("status");
+    const outEl = el("jsonOut");
+    const listEl = el("proofList");
+    const downloadBtn = el("btnDownloadConsistency");
     let lastPayload = null;
 
     function setStatus(msg, isErr = false) {
@@ -75,18 +75,9 @@
       statusEl.textContent = msg;
     }
 
-    function downloadJson(filename, data) {
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(a.href);
-    }
-
-    document.getElementById("btnFetchConsistency").addEventListener("click", async () => {
-      const from = document.getElementById("fromSize").value.trim();
-      const to = document.getElementById("toSize").value.trim();
+    el("btnFetchConsistency").addEventListener("click", async () => {
+      const from = el("fromSize").value.trim();
+      const to = el("toSize").value.trim();
       if (!from || !to) {
         setStatus("Inserisci sia from che to.", true);
         return;
@@ -98,16 +89,14 @@
         outEl.textContent = "(caricamento...)";
         downloadBtn.disabled = true;
 
-        const res = await fetch(`${API_BASE}/get-consistency?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
-        const text = await res.text();
-        if (!res.ok) throw new Error(text || `HTTP ${res.status}`);
+        const text = await fetchText(`${API_BASE}/get-consistency?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
         const payload = JSON.parse(text);
 
         lastPayload = payload;
         downloadBtn.disabled = false;
 
-        document.getElementById("resFrom").textContent = String(payload.from_tree_size ?? "-");
-        document.getElementById("resTo").textContent = String(payload.to_tree_size ?? "-");
+        el("resFrom").textContent = String(payload.from_tree_size ?? "-");
+        el("resTo").textContent = String(payload.to_tree_size ?? "-");
 
         const proof = Array.isArray(payload.proof) ? payload.proof : [];
         listEl.innerHTML = proof.length

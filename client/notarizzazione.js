@@ -1,27 +1,15 @@
+import {
+  API_BASE,
+  DEMO_ISSUERS,
+  el,
+  downloadText,
+} from "./common.js";
+
 // ===== Config =====
-const ADD_URL = "http://localhost:2025/add";
+const ADD_URL = `${API_BASE}/add`;
 const MAX_JSON_BYTES = 2048;
-const DEMO_ISSUERS = [
-  { entityId: "", name: "Seleziona ente..." },
-  { entityId: "IPA:COMUNE-XYZ", name: "Comune di Esempio — Ufficio Protocollo" },
-  { entityId: "IPA:C_ROMA", name: "Comune di Roma" },
-  { entityId: "IPA:C_MILANO", name: "Comune di Milano" },
-  { entityId: "IPA:C_TORINO", name: "Comune di Torino" },
-  { entityId: "IPA:C_NAPOLI", name: "Comune di Napoli" },
-  { entityId: "IPA:C_BOLOGNA", name: "Comune di Bologna" },
-  { entityId: "IPA:C_FIRENZE", name: "Comune di Firenze" },
-  { entityId: "IPA:R_LAZIO", name: "Regione Lazio" },
-  { entityId: "IPA:R_LOMBARDIA", name: "Regione Lombardia" },
-  { entityId: "IPA:R_PIEMONTE", name: "Regione Piemonte" },
-  { entityId: "IPA:R_SICILIA", name: "Regione Siciliana" },
-  { entityId: "IPA:M_INTERNO", name: "Ministero dell'Interno" },
-  { entityId: "IPA:M_GIUSTIZIA", name: "Ministero della Giustizia" },
-  { entityId: "IPA:M_ECONOMIA", name: "Ministero dell'Economia e delle Finanze" },
-  { entityId: "IPA:INPS", name: "INPS" },
-];
 
 // ===== DOM Elements =====
-const el = (id) => document.getElementById(id);
 const fileEl = el("file");
 const issuerIdEl = el("issuerId");
 const issuerNameEl = el("issuerName");
@@ -276,15 +264,7 @@ btnSend.addEventListener("click", async () => {
 btnDownload.addEventListener("click", () => {
   try {
     if (!lastNotarizedJSON) throw new Error("Prima notarizza il documento con /add");
-    const blob = new Blob([lastNotarizedJSON], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "event_notarized.json";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+    downloadText("event_notarized.json", lastNotarizedJSON, "application/json");
   } catch (e) {
     setStatus(e?.message || String(e), "err");
   }

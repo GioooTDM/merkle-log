@@ -101,32 +101,39 @@
     </nav>
   </main>
 
-  <script>
-    // --- Config ---
-    const API_BASE = "http://localhost:2025";
+  <script type="module">
+    import {
+      API_BASE,
+      el,
+      fetchJson,
+      fetchText,
+      normalizeHex,
+      downloadJson,
+      downloadText,
+    } from "./common.js";
 
     // --- DOM refs ---
-    const fileInput = document.getElementById('fileInput');
-    const dropzone = document.getElementById('dropzone');
-    const btnFetch = document.getElementById('btnFetchData');
-    const btnGetProof = document.getElementById('btnGetProof');
-    const proofDisplayArea = document.getElementById('proofDisplayArea');
-    const proofList = document.getElementById('proofList');
-    const btnDownloadProof = document.getElementById('btnDownloadProof');
-    const leafHashDisplay = document.getElementById('leafHashDisplay');
+    const fileInput = el('fileInput');
+    const dropzone = el('dropzone');
+    const btnFetch = el('btnFetchData');
+    const btnGetProof = el('btnGetProof');
+    const proofDisplayArea = el('proofDisplayArea');
+    const proofList = el('proofList');
+    const btnDownloadProof = el('btnDownloadProof');
+    const leafHashDisplay = el('leafHashDisplay');
 
-    const elStep2 = document.getElementById('step2');
-    const elStep3 = document.getElementById('step3');
-    const elStep4 = document.getElementById('step4');
-    const elDocResult = document.getElementById('docResult');
-    const elDocHashDisplay = document.getElementById('docHashDisplay');
-    const elDropzoneText = document.getElementById('dropzoneText');
-    const elJsonPreview = document.getElementById('jsonPreview');
-    const elJsonDisplay = document.getElementById('jsonDisplay');
-    const elBtnDownloadJson = document.getElementById('btnDownloadJson');
-    const elResIndex = document.getElementById('resIndex');
-    const elFinalResult = document.getElementById('finalResult');
-    const elRootHash = document.getElementById('rootHash');
+    const elStep2 = el('step2');
+    const elStep3 = el('step3');
+    const elStep4 = el('step4');
+    const elDocResult = el('docResult');
+    const elDocHashDisplay = el('docHashDisplay');
+    const elDropzoneText = el('dropzoneText');
+    const elJsonPreview = el('jsonPreview');
+    const elJsonDisplay = el('jsonDisplay');
+    const elBtnDownloadJson = el('btnDownloadJson');
+    const elResIndex = el('resIndex');
+    const elFinalResult = el('finalResult');
+    const elRootHash = el('rootHash');
 
     // --- State ---
     let currentDocHash = "";
@@ -140,10 +147,6 @@
 
       const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
       return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
-    }
-
-    function normalizeHex(h) {
-      return String(h || "").trim().toLowerCase().replace(/^hex:/, "");
     }
 
     function setStepEnabled(stepEl, enabled) {
@@ -177,24 +180,6 @@
       elStep4.classList.remove("active");
       elStep4.style.opacity = "0.5";
       btnGetProof.disabled = true;
-    }
-
-    async function safeFetchJson(url) {
-      const res = await fetch(url);
-      if (!res.ok) {
-        const t = await res.text().catch(() => "");
-        throw new Error(`HTTP ${res.status}: ${t || "Richiesta fallita"}`);
-      }
-      return res.json();
-    }
-
-    async function safeFetchText(url) {
-      const res = await fetch(url);
-      if (!res.ok) {
-        const t = await res.text().catch(() => "");
-        throw new Error(`HTTP ${res.status}: ${t || "Richiesta fallita"}`);
-      }
-      return res.text();
     }
 
     // --- STEP 1: Calcolo Hash PDF ---
@@ -233,12 +218,12 @@
         if (!currentDocHash) throw new Error("Seleziona prima un documento.");
 
         // 1) Trova index dal doc hash
-        const data = await safeFetchJson(`${API_BASE}/get-by-doc?hash=${encodeURIComponent(currentDocHash)}`);
+        const data = await fetchJson(`${API_BASE}/get-by-doc?hash=${encodeURIComponent(currentDocHash)}`);
         logIndex = data.log_index;
         if (logIndex === undefined || logIndex === null) throw new Error("Risposta /get-by-doc non valida.");
 
         // 2) Recupera entry dal log
-        const eventRaw = await safeFetchText(`${API_BASE}/get-entry/${encodeURIComponent(logIndex)}`);
+        const eventRaw = await fetchText(`${API_BASE}/get-entry/${encodeURIComponent(logIndex)}`);
 
         // IMPORTANT: usiamo il testo RAW per calcolare lo stesso hash del contenuto ricevuto
         const eventJson = JSON.parse(eventRaw);
@@ -298,7 +283,7 @@
       try {
         if (logIndex === null) throw new Error("Indice log non disponibile.");
 
-        const proofData = await safeFetchJson(`${API_BASE}/get-proof/${encodeURIComponent(logIndex)}`);
+        const proofData = await fetchJson(`${API_BASE}/get-proof/${encodeURIComponent(logIndex)}`);
 
         if (!proofData.proof || !Array.isArray(proofData.proof)) {
           throw new Error("Formato proof non valido ricevuto dal server.");
@@ -323,21 +308,13 @@
 
     function setupDownloadProof(proof) {
       btnDownloadProof.onclick = () => {
-        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(proof, null, 2));
-        const link = document.createElement('a');
-        link.setAttribute("href", dataStr);
-        link.setAttribute("download", `merkle_proof_idx_${logIndex}.json`);
-        link.click();
+        downloadJson(`merkle_proof_idx_${logIndex}.json`, proof);
       };
     }
 
     function setupDownloadJson(rawString, index) {
       elBtnDownloadJson.onclick = () => {
-        const link = document.createElement('a');
-        // Manteniamo RAW (senza re-stringify) per preservare i byte così come scaricati.
-        link.href = "data:application/json;charset=utf-8," + encodeURIComponent(rawString);
-        link.download = `notary_event_${index}.json`;
-        link.click();
+        downloadText(`notary_event_${index}.json`, rawString, "application/json");
       };
     }
   </script>

@@ -97,7 +97,7 @@
           </div>
           <div class="info-row">
             <span class="info-label">Endpoint:</span>
-            <span class="info-value">http://localhost:2025</span>
+            <span id="serverEndpoint" class="info-value">---</span>
           </div>
         </div>
       </section>
@@ -108,31 +108,32 @@
     </nav>
   </main>
 
-  <script>
-    const API_BASE = "http://localhost:2025";
+  <script type="module">
+    import {
+      API_BASE,
+      el,
+      fetchJson,
+      fetchText,
+      downloadText,
+      parseCheckpointSize,
+    } from "./common.js";
     let latestCheckpointRaw = "";
 
     // --- DOM refs ---
     const els = {
-      totalEntries:      document.getElementById("totalEntries"),
-      treeSize:          document.getElementById("treeSize"),
-      checkpointRaw:     document.getElementById("checkpointRaw"),
-      anchorTxLink:      document.getElementById("anchorTxLink"),
-      anchorBlockNumber: document.getElementById("anchorBlockNumber"),
-      anchoredRootHash:  document.getElementById("anchoredRootHash"),
-      btnForceAnchor:    document.getElementById("btnForceAnchor"),
-      forceAnchorStatus: document.getElementById("forceAnchorStatus"),
-      btnDownloadCheckpoint: document.getElementById("btnDownloadCheckpoint"),
+      totalEntries:      el("totalEntries"),
+      treeSize:          el("treeSize"),
+      checkpointRaw:     el("checkpointRaw"),
+      anchorTxLink:      el("anchorTxLink"),
+      anchorBlockNumber: el("anchorBlockNumber"),
+      anchoredRootHash:  el("anchoredRootHash"),
+      btnForceAnchor:    el("btnForceAnchor"),
+      forceAnchorStatus: el("forceAnchorStatus"),
+      btnDownloadCheckpoint: el("btnDownloadCheckpoint"),
+      serverEndpoint:    el("serverEndpoint"),
     };
 
     // --- Helpers ---
-    function parseCheckpointSize(raw) {
-      const lines = raw.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
-      const sizeLine = lines.find((line) => /^\d+$/.test(line));
-      if (!sizeLine) throw new Error("Formato checkpoint non riconosciuto");
-      return Number(sizeLine);
-    }
-
     function merkleTreeHeight(treeSize) {
       if (!Number.isSafeInteger(treeSize) || treeSize <= 0) return 0;
       return Math.ceil(Math.log2(treeSize)) + 1;
@@ -141,10 +142,7 @@
     // --- Data loaders ---
     async function loadCheckpoint() {
       try {
-        const res = await fetch(`${API_BASE}/checkpoint`, { cache: "no-store" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-        const raw = await res.text();
+        const raw = await fetchText(`${API_BASE}/checkpoint`, { cache: "no-store" });
         latestCheckpointRaw = raw;
         els.checkpointRaw.textContent = raw.trim() || "(checkpoint vuoto)";
 
@@ -161,9 +159,7 @@
 
     async function loadAnchor() {
       try {
-        const res = await fetch(`${API_BASE}/anchor/latest`, { cache: "no-store" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const payload = await res.json();
+        const payload = await fetchJson(`${API_BASE}/anchor/latest`, { cache: "no-store" });
 
         const txid        = payload?.tx_id || "";
         const blockNumber = payload?.block_number;
@@ -224,25 +220,17 @@
       try {
         let raw = latestCheckpointRaw;
         if (!raw) {
-          const res = await fetch(`${API_BASE}/checkpoint`, { cache: "no-store" });
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          raw = await res.text();
+          raw = await fetchText(`${API_BASE}/checkpoint`, { cache: "no-store" });
         }
 
-        const blob = new Blob([raw], { type: "text/plain;charset=utf-8" });
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
-        a.download = "checkpoint-latest.tlog-checkpoint";
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(a.href);
+        downloadText("checkpoint-latest.tlog-checkpoint", raw, "text/plain;charset=utf-8");
       } catch (err) {
         alert(`Errore download checkpoint: ${err?.message || String(err)}`);
       }
     }
 
     // --- Init ---
+    els.serverEndpoint.textContent = API_BASE;
     els.btnForceAnchor?.addEventListener("click", forceAnchorNow);
     els.btnDownloadCheckpoint?.addEventListener("click", downloadLatestCheckpoint);
     loadStatus();

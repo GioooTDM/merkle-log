@@ -87,12 +87,13 @@
     </nav>
   </main>
 
-  <script>
-    const statusEl = document.getElementById("verifyStatus");
-    const detailsEl = document.getElementById("details");
-    const modeEl = document.getElementById("verifyMode");
-    const checkpointInputsEl = document.getElementById("checkpointInputs");
-    const rootInputsEl = document.getElementById("rootInputs");
+  <script type="module">
+    import { el } from "./common.js";
+    const statusEl = el("verifyStatus");
+    const detailsEl = el("details");
+    const modeEl = el("verifyMode");
+    const checkpointInputsEl = el("checkpointInputs");
+    const rootInputsEl = el("rootInputs");
 
     function setStatus(kind, msg) {
       statusEl.className = `status-box ${kind}`;
@@ -207,7 +208,7 @@
     }
 
     async function readTextFromInput(id) {
-      const f = document.getElementById(id).files?.[0];
+      const f = el(id).files?.[0];
       if (!f) throw new Error(`File mancante: ${id}`);
       return f.text();
     }
@@ -223,7 +224,7 @@
       rootInputsEl.style.display = mode === "root" ? "block" : "none";
     });
 
-    document.getElementById("btnVerifyConsistency").addEventListener("click", async () => {
+    el("btnVerifyConsistency").addEventListener("click", async () => {
       try {
         setStatus("status-idle", "Verifica in corso...");
         detailsEl.textContent = "(calcolo...)";
@@ -250,17 +251,17 @@
           oldRootBytes = oldCP.root;
           newRootBytes = newCP.root;
         } else {
-          oldRootBytes = hexToBytes(document.getElementById("oldRootHex").value);
-          newRootBytes = hexToBytes(document.getElementById("newRootHex").value);
+          oldRootBytes = hexToBytes(el("oldRootHex").value);
+          newRootBytes = hexToBytes(el("newRootHex").value);
         }
 
         const ok = await verifyConsistency(from, oldRootBytes, to, newRootBytes, proof);
 
-        document.getElementById("resFrom").textContent = from.toString();
-        document.getElementById("resTo").textContent = to.toString();
-        document.getElementById("resOldRoot").textContent = bytesToHex(oldRootBytes);
-        document.getElementById("resNewRoot").textContent = bytesToHex(newRootBytes);
-        document.getElementById("resNodes").textContent = String(proof.length);
+        el("resFrom").textContent = from.toString();
+        el("resTo").textContent = to.toString();
+        el("resOldRoot").textContent = bytesToHex(oldRootBytes);
+        el("resNewRoot").textContent = bytesToHex(newRootBytes);
+        el("resNodes").textContent = String(proof.length);
 
         detailsEl.textContent = JSON.stringify({
           mode,

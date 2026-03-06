@@ -95,73 +95,39 @@
     </nav>
   </main>
 
-  <script>
+  <script type="module">
+    import {
+      API_BASE,
+      DEMO_ISSUERS,
+      el,
+      safeStr,
+      normalizeHex,
+      formatDate,
+      fetchJson,
+      fetchText,
+      parseCheckpointSize,
+    } from "./common.js";
+
     const Config = {
-      API_BASE: "http://localhost:2025",
       INITIAL_LATEST_LIMIT: 5
     };
 
-    const DEMO_ISSUERS = [
-      { entityId: "", name: "Tutti gli Enti" },
-      { entityId: "IPA:COMUNE-XYZ", name: "Comune di Esempio — Ufficio Protocollo" },
-      { entityId: "IPA:C_ROMA", name: "Comune di Roma" },
-      { entityId: "IPA:C_MILANO", name: "Comune di Milano" },
-      { entityId: "IPA:C_TORINO", name: "Comune di Torino" },
-      { entityId: "IPA:C_NAPOLI", name: "Comune di Napoli" },
-      { entityId: "IPA:C_BOLOGNA", name: "Comune di Bologna" },
-      { entityId: "IPA:C_FIRENZE", name: "Comune di Firenze" },
-      { entityId: "IPA:R_LAZIO", name: "Regione Lazio" },
-      { entityId: "IPA:R_LOMBARDIA", name: "Regione Lombardia" },
-      { entityId: "IPA:R_PIEMONTE", name: "Regione Piemonte" },
-      { entityId: "IPA:R_SICILIA", name: "Regione Siciliana" },
-      { entityId: "IPA:M_INTERNO", name: "Ministero dell'Interno" },
-      { entityId: "IPA:M_GIUSTIZIA", name: "Ministero della Giustizia" },
-      { entityId: "IPA:M_ECONOMIA", name: "Ministero dell'Economia e delle Finanze" },
-      { entityId: "IPA:INPS", name: "INPS" },
-    ];
-
     const DOM = {
-      btnSearch: document.getElementById('btnSearch'),
-      resultsBody: document.getElementById('resultsBody'),
-      resultCount: document.getElementById('resultCount'),
-      filterIssuerSelect: document.getElementById('filterIssuer'),
-      filterUidInput: document.getElementById('filterUid'),
-      filterDateFromInput: document.getElementById('filterDateFrom'),
-      filterDateToInput: document.getElementById('filterDateTo')
+      btnSearch: el('btnSearch'),
+      resultsBody: el('resultsBody'),
+      resultCount: el('resultCount'),
+      filterIssuerSelect: el('filterIssuer'),
+      filterUidInput: el('filterUid'),
+      filterDateFromInput: el('filterDateFrom'),
+      filterDateToInput: el('filterDateTo')
     };
 
     const Utils = {
-      safeStr(v, fallback = "-") {
-        return (v === undefined || v === null || v === "") ? fallback : String(v);
-      },
-
-      normalizeHex(h) {
-        return String(h || "").trim().toLowerCase().replace(/^hex:/, "");
-      },
-
       parseIssuer(issuerObj) {
         if (!issuerObj) return "-";
         if (issuerObj.name) return String(issuerObj.name);
         if (issuerObj.entity_id) return String(issuerObj.entity_id);
         return "-";
-      },
-
-      formatDate(s) {
-        if (!s) return "-";
-
-        const d = new Date(s);
-        if (isNaN(d.getTime())) return s; // fallback se formato strano
-
-        const pad = (n) => n.toString().padStart(2, "0");
-
-        const year  = d.getFullYear();
-        const month = pad(d.getMonth() + 1);
-        const day   = pad(d.getDate());
-        const hours = pad(d.getHours());
-        const mins  = pad(d.getMinutes());
-        const secs  = pad(d.getSeconds());
-
-        return `${year}-${month}-${day} ${hours}:${mins}:${secs}`;
       },
 
       parseEntryMaybe(e) {
@@ -173,38 +139,21 @@
     };
 
     const API = {
-      async fetchJson(url) {
-        const res = await fetch(url);
-        if (!res.ok) {
-          const t = await res.text().catch(() => "");
-          throw new Error(`HTTP ${res.status}: ${t || "Richiesta fallita"}`);
-        }
-        return res.json();
-      },
-
       async getCheckpointSize() {
-        const res = await fetch(`${Config.API_BASE}/checkpoint`, { cache: "no-store" });
-        if (!res.ok) {
-          const t = await res.text().catch(() => "");
-          throw new Error(`HTTP ${res.status}: ${t || "checkpoint non disponibile"}`);
-        }
-        const text = await res.text();
-        const lines = text.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
-        const sizeLine = lines.find((line) => /^\d+$/.test(line));
-        if (!sizeLine) throw new Error("Formato checkpoint non riconosciuto");
-        return Number(sizeLine);
+        const text = await fetchText(`${API_BASE}/checkpoint`, { cache: "no-store" });
+        return parseCheckpointSize(text);
       },
 
       async getEntryByIndex(index) {
-        const res = await fetch(`${Config.API_BASE}/get-entry/${index}`);
+        const res = await fetch(`${API_BASE}/get-entry/${index}`);
         if (!res.ok) return null;
         const text = await res.text();
         try { return JSON.parse(text); } catch { return null; }
       },
 
       async searchByDocUID(docUID) {
-        const url = `${Config.API_BASE}/get-entries-by-docuid?doc_uid=${encodeURIComponent(docUID)}`;
-        return this.fetchJson(url);
+        const url = `${API_BASE}/get-entries-by-docuid?doc_uid=${encodeURIComponent(docUID)}`;
+        return fetchJson(url);
       },
 
       async searchByIssuer(issuerEntityID, dateFrom, dateTo) {
@@ -212,14 +161,14 @@
         qs.set("issuer_entity_id", issuerEntityID);
         if (dateFrom) qs.set("date_from", dateFrom);
         if (dateTo) qs.set("date_to", dateTo);
-        return this.fetchJson(`${Config.API_BASE}/get-entries-by-issuer?${qs.toString()}`);
+        return fetchJson(`${API_BASE}/get-entries-by-issuer?${qs.toString()}`);
       },
 
       async searchByDate(dateFrom, dateTo) {
         const qs = new URLSearchParams();
         if (dateFrom) qs.set("date_from", dateFrom);
         if (dateTo) qs.set("date_to", dateTo);
-        return this.fetchJson(`${Config.API_BASE}/get-entries-by-date?${qs.toString()}`);
+        return fetchJson(`${API_BASE}/get-entries-by-date?${qs.toString()}`);
       }
     };
 
@@ -250,16 +199,16 @@
       rowFromEvent(ev, index, fallbackUID = "") {
         return {
           index,
-          date: Utils.formatDate(ev.recorded_at || ev.issued_at),
-          dateRaw: Utils.safeStr(ev.recorded_at || ev.issued_at, ""),
-          issuerEntityID: Utils.safeStr(ev?.issuer?.entity_id, ""),
+          date: formatDate(ev.recorded_at || ev.issued_at),
+          dateRaw: safeStr(ev.recorded_at || ev.issued_at, ""),
+          issuerEntityID: safeStr(ev?.issuer?.entity_id, ""),
           issuer: Utils.parseIssuer(ev.issuer),
-          uid: Utils.safeStr(ev.doc_uid || fallbackUID),
-          version: Utils.safeStr(ev.doc_version, "?"),
-          title: Utils.safeStr(ev.title || ev.event_type || "Evento"),
-          event_id: Utils.safeStr(ev.event_id),
-          event_type: Utils.safeStr(ev.event_type),
-          payload_hash: Utils.normalizeHex(ev?.payload_hash?.value),
+          uid: safeStr(ev.doc_uid || fallbackUID),
+          version: safeStr(ev.doc_version, "?"),
+          title: safeStr(ev.title || ev.event_type || "Evento"),
+          event_id: safeStr(ev.event_id),
+          event_type: safeStr(ev.event_type),
+          payload_hash: normalizeHex(ev?.payload_hash?.value),
         };
       },
 
@@ -357,7 +306,7 @@
 
       showTableError(prefix, err) {
         DOM.resultsBody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 20px; color: #b00020;">
-          ${prefix}: ${Utils.safeStr(err?.message, "richiesta fallita")}
+          ${prefix}: ${safeStr(err?.message, "richiesta fallita")}
         </td></tr>`;
         DOM.resultCount.innerText = "Errore";
       },

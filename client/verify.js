@@ -2,7 +2,9 @@
 // Assumes proof JSON contains: { log_index, tree_size, root_hash, checkpoint, proof:[hex...] }
 // Assumes event JSON file is EXACTLY the bytes appended in the log (server used tessera.NewEntry(body)).
 
-const $ = (id) => document.getElementById(id);
+import { el, safeStr } from "./common.js";
+
+const $ = el;
 
 const statusEl = $("verifyStatus");
 const detailsEl = $("proofDetails");
@@ -130,9 +132,9 @@ function extractEventPayloadHash(eventJson) {
 
 function pickMeta(eventJson) {
   return {
-    docUid: eventJson?.doc_uid ?? eventJson?.document_id ?? "-",
-    version: eventJson?.doc_version ?? eventJson?.version ?? "-",
-    date: eventJson?.recorded_at ?? eventJson?.issued_at ?? eventJson?.time ?? eventJson?.date ?? eventJson?.timestamp ?? "-",
+    docUid: safeStr(eventJson?.doc_uid ?? eventJson?.document_id, "-"),
+    version: safeStr(eventJson?.doc_version ?? eventJson?.version, "-"),
+    date: safeStr(eventJson?.recorded_at ?? eventJson?.issued_at ?? eventJson?.time ?? eventJson?.date ?? eventJson?.timestamp, "-"),
   };
 }
 
