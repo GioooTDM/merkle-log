@@ -107,6 +107,7 @@
       downloadJson,
       downloadText,
     } from "./common.js";
+    import { sha256Hex } from "./crypto.js";
 
     // --- DOM refs ---
     const fileInput = el('fileInput');
@@ -134,16 +135,6 @@
     // --- State ---
     let currentDocHash = "";
     let logIndex = null;
-
-    // Helper per calcolare SHA-256 di una stringa o ArrayBuffer
-    async function calculateHash(data) {
-      const msgUint8 = (typeof data === 'string')
-        ? new TextEncoder().encode(data)
-        : new Uint8Array(data);
-
-      const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
-      return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
-    }
 
     function setStepEnabled(stepEl, enabled) {
       stepEl.style.opacity = enabled ? "1" : "0.5";
@@ -195,7 +186,7 @@
         elDropzoneText.innerText = file.name;
 
         const arrayBuffer = await file.arrayBuffer();
-        currentDocHash = await calculateHash(arrayBuffer);
+        currentDocHash = await sha256Hex(arrayBuffer);
         elDocHashDisplay.innerText = currentDocHash;
 
         setStepEnabled(elStep2, true);
@@ -225,7 +216,7 @@
         const eventJson = JSON.parse(eventRaw);
 
         // 3) Hash dell'evento (diagnostico)
-        const leafHash = await calculateHash(eventRaw);
+        const leafHash = await sha256Hex(eventRaw);
         leafHashDisplay.innerText = leafHash;
 
         // 4) UI preview

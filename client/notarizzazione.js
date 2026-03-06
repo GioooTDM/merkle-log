@@ -4,6 +4,7 @@ import {
   el,
   downloadText,
 } from "./common.js";
+import { sha256Hex } from "./crypto.js";
 
 // ===== Config =====
 const ADD_URL = `${API_BASE}/add`;
@@ -88,13 +89,6 @@ function isUUIDv4(s) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
 }
 
-function hexFromBytes(buf) {
-  const b = new Uint8Array(buf);
-  let out = "";
-  for (let i = 0; i < b.length; i++) out += b[i].toString(16).padStart(2, "0");
-  return out;
-}
-
 // ===== Network Helpers =====
 async function sendNotarizationRequest(payload) {
   const res = await fetch(ADD_URL, {
@@ -113,13 +107,6 @@ async function sendNotarizationRequest(payload) {
   const isJson = ct.includes("application/json");
 
   return { raw, isJson };
-}
-
-// ===== JSON & Crypto Logic =====
-async function sha256HexOfFile(file) {
-  const ab = await file.arrayBuffer();
-  const digest = await crypto.subtle.digest("SHA-256", ab);
-  return hexFromBytes(digest);
 }
 
 // ===== Business Logic =====
@@ -142,7 +129,7 @@ function buildEventObject(data, payloadHex) {
   }
 
   const needsPrev = data.eventType === "UPDATE" || data.eventType === "REVOKE" || data.eventType === "EXPIRE";
-  
+
   if (needsPrev) {
     requireNonEmpty("prev_event_id", data.prevEventId);
     if (!isUUIDv4(data.prevEventId)) throw new Error("prev_event_id deve essere UUIDv4");
@@ -198,7 +185,7 @@ btnBuild.addEventListener("click", async () => {
     if (!file) throw new Error("Seleziona un file");
 
     const formData = getFormData();
-    const payloadHex = await sha256HexOfFile(file);
+    const payloadHex = await sha256Hex(await file.arrayBuffer());
     const ev = buildEventObject(formData, payloadHex);
 
     const reqJSON = JSON.stringify(ev);
@@ -230,15 +217,15 @@ btnSend.addEventListener("click", async () => {
     if (isJson) {
       const parsed = JSON.parse(raw);
       respEl.textContent = JSON.stringify(parsed, null, 2);
-      
+
       if (parsed?.notarized_json === undefined) {
         throw new Error("Risposta /add senza notarized_json");
       }
-      
+
       lastNotarizedJSON = typeof parsed.notarized_json === "string"
         ? parsed.notarized_json
         : JSON.stringify(parsed.notarized_json);
-      
+
       btnDownload.disabled = false;
 
       const idx = parsed?.log_index;

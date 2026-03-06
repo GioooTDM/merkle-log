@@ -89,6 +89,8 @@
 
   <script type="module">
     import { el } from "./common.js";
+    import { hexToBytes, bytesToHex, b64ToBytes, hashNode, equalBytes } from "./crypto.js";
+
     const statusEl = el("verifyStatus");
     const detailsEl = el("details");
     const modeEl = el("verifyMode");
@@ -98,45 +100,6 @@
     function setStatus(kind, msg) {
       statusEl.className = `status-box ${kind}`;
       statusEl.textContent = msg;
-    }
-
-    function bytesToHex(bytes) {
-      return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-    }
-
-    function hexToBytes(hex) {
-      const h = String(hex || "").trim().replace(/^0x/, "");
-      if (!/^[0-9a-fA-F]{64}$/.test(h)) throw new Error("Hex hash non valido (attesi 32 byte)");
-      const out = new Uint8Array(32);
-      for (let i = 0; i < 32; i++) out[i] = parseInt(h.slice(i * 2, i * 2 + 2), 16);
-      return out;
-    }
-
-    function b64ToBytes(b64) {
-      const raw = atob(String(b64).trim());
-      const out = new Uint8Array(raw.length);
-      for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
-      return out;
-    }
-
-    async function sha256(bytes) {
-      const buf = await crypto.subtle.digest("SHA-256", bytes);
-      return new Uint8Array(buf);
-    }
-
-    async function hashNode(left32, right32) {
-      if (left32.length !== 32 || right32.length !== 32) throw new Error("hashNode richiede hash da 32 byte");
-      const inb = new Uint8Array(1 + 32 + 32);
-      inb[0] = 0x01;
-      inb.set(left32, 1);
-      inb.set(right32, 33);
-      return sha256(inb);
-    }
-
-    function equalBytes(a, b) {
-      if (a.length !== b.length) return false;
-      for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
-      return true;
     }
 
     function isPowerOfTwo(n) {

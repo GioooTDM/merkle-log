@@ -3,6 +3,7 @@
 // Assumes event JSON file is EXACTLY the bytes appended in the log (server used tessera.NewEntry(body)).
 
 import { el, safeStr } from "./common.js";
+import { hexToBytes, bytesToHex, sha256, hashLeaf, hashNode } from "./crypto.js";
 
 const $ = el;
 
@@ -17,42 +18,6 @@ const resIndex = $("resIndex");
 function setStatus(kind, msg) {
   statusEl.className = `status-box ${kind}`;
   statusEl.textContent = msg;
-}
-
-function hexToBytes(hex) {
-  const h = hex.startsWith("0x") ? hex.slice(2) : hex;
-  if (!/^[0-9a-fA-F]*$/.test(h)) throw new Error("invalid hex");
-  if (h.length % 2 !== 0) throw new Error("hex length must be even");
-  const out = new Uint8Array(h.length / 2);
-  for (let i = 0; i < out.length; i++) out[i] = parseInt(h.slice(i * 2, i * 2 + 2), 16);
-  return out;
-}
-
-function bytesToHex(bytes) {
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-async function sha256(bytes) {
-  const buf = await crypto.subtle.digest("SHA-256", bytes);
-  return new Uint8Array(buf);
-}
-
-// RFC6962: leaf = SHA256(0x00 || leafBytes)
-async function hashLeaf(leafBytes) {
-  const pref = new Uint8Array(1 + leafBytes.length);
-  pref[0] = 0x00;
-  pref.set(leafBytes, 1);
-  return sha256(pref);
-}
-
-// RFC6962: node = SHA256(0x01 || left || right)
-async function hashNode(left32, right32) {
-  if (left32.length !== 32 || right32.length !== 32) throw new Error("hashNode needs 32-byte hashes");
-  const pref = new Uint8Array(1 + 32 + 32);
-  pref[0] = 0x01;
-  pref.set(left32, 1);
-  pref.set(right32, 1 + 32);
-  return sha256(pref);
 }
 
 /**
@@ -215,7 +180,7 @@ $("btnVerify").addEventListener("click", async () => {
     if (docOk && proofOk) {
       setStatus("status-success", "✅ Verifica OK: documento coerente e proof valida.");
     } else if (!docOk && proofOk) {
-      setStatus("status-error", "❌ Proof valida, ma il documento NON corrisponde all’hash nell’evento.");
+      setStatus("status-error", "❌ Proof valida, ma il documento NON corrisponde all'hash nell'evento.");
     } else if (docOk && !proofOk) {
       setStatus("status-error", "❌ Documento OK, ma proof NON valida (root hash mismatch).");
     } else {
