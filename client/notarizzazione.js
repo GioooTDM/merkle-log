@@ -1,6 +1,24 @@
 // ===== Config =====
 const ADD_URL = "http://localhost:2025/add";
 const MAX_JSON_BYTES = 2048;
+const DEMO_ISSUERS = [
+  { entityId: "", name: "Seleziona ente..." },
+  { entityId: "IPA:COMUNE-XYZ", name: "Comune di Esempio — Ufficio Protocollo" },
+  { entityId: "IPA:C_ROMA", name: "Comune di Roma" },
+  { entityId: "IPA:C_MILANO", name: "Comune di Milano" },
+  { entityId: "IPA:C_TORINO", name: "Comune di Torino" },
+  { entityId: "IPA:C_NAPOLI", name: "Comune di Napoli" },
+  { entityId: "IPA:C_BOLOGNA", name: "Comune di Bologna" },
+  { entityId: "IPA:C_FIRENZE", name: "Comune di Firenze" },
+  { entityId: "IPA:R_LAZIO", name: "Regione Lazio" },
+  { entityId: "IPA:R_LOMBARDIA", name: "Regione Lombardia" },
+  { entityId: "IPA:R_PIEMONTE", name: "Regione Piemonte" },
+  { entityId: "IPA:R_SICILIA", name: "Regione Siciliana" },
+  { entityId: "IPA:M_INTERNO", name: "Ministero dell'Interno" },
+  { entityId: "IPA:M_GIUSTIZIA", name: "Ministero della Giustizia" },
+  { entityId: "IPA:M_ECONOMIA", name: "Ministero dell'Economia e delle Finanze" },
+  { entityId: "IPA:INPS", name: "INPS" },
+];
 
 // ===== DOM Elements =====
 const el = (id) => document.getElementById(id);
@@ -26,6 +44,21 @@ const statusEl = el("status");
 // ===== State =====
 let lastRequestJSON = null;
 let lastNotarizedJSON = null;
+
+function populateIssuerOptions() {
+  issuerIdEl.innerHTML = "";
+  DEMO_ISSUERS.forEach((issuer) => {
+    const option = document.createElement("option");
+    option.value = issuer.entityId;
+    option.textContent = issuer.entityId || "Seleziona issuer entity id...";
+    issuerIdEl.appendChild(option);
+  });
+}
+
+function syncIssuerName() {
+  const selected = DEMO_ISSUERS.find((issuer) => issuer.entityId === issuerIdEl.value);
+  issuerNameEl.value = selected ? selected.name : "";
+}
 
 // ===== Form Helpers =====
 function getFormData() {
@@ -161,6 +194,10 @@ function buildEventObject(data, payloadHex) {
   };
 }
 
+populateIssuerOptions();
+syncIssuerName();
+issuerIdEl.addEventListener("change", syncIssuerName);
+
 // ===== UI Actions =====
 btnBuild.addEventListener("click", async () => {
   try {
@@ -254,7 +291,7 @@ btnDownload.addEventListener("click", () => {
 });
 
 document.getElementById("btnMock").addEventListener("click", () => {
-  const comuni = ["Roma", "Milano", "Napoli", "Torino", "Palermo", "Genova", "Bologna", "Firenze"];
+  const mockIssuers = DEMO_ISSUERS.filter((issuer) => issuer.entityId);
   const tipiDoc = ["Determina", "Ordinanza", "Delibera", "Protocollo", "Certificato", "Circolare"];
   const possibiliNote = [
     "Generato automaticamente per test notarizzazione.",
@@ -266,14 +303,14 @@ document.getElementById("btnMock").addEventListener("click", () => {
     "",
   ];
 
-  const comune = comuni[Math.floor(Math.random() * comuni.length)];
+  const issuer = mockIssuers[Math.floor(Math.random() * mockIssuers.length)];
   const tipo = tipiDoc[Math.floor(Math.random() * tipiDoc.length)];
   const nota = possibiliNote[Math.floor(Math.random() * possibiliNote.length)];
   const anno = 2026;
   const num = Math.floor(Math.random() * 100000);
 
-  issuerIdEl.value = `IPA:c_${comune.toLowerCase().replace(" ", "")}`;
-  issuerNameEl.value = `Comune di ${comune}`;
+  issuerIdEl.value = issuer.entityId;
+  syncIssuerName();
   docUidEl.value = `${tipo.toUpperCase()}/${anno}/${num}`;
 
   eventTypeEl.value = "CREATE";
@@ -281,6 +318,6 @@ document.getElementById("btnMock").addEventListener("click", () => {
   prevEventIdEl.value = "";
 
   titleEl.value = `${tipo} dirigenziale n. ${num}`;
-  descriptionEl.value = `Documento relativo alla gestione pratica ${num} per l'ufficio tecnico di ${comune}.`;
+  descriptionEl.value = `Documento relativo alla gestione pratica ${num} per ${issuer.name}.`;
   notesEl.value = nota;
 });

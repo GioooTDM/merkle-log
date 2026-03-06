@@ -38,12 +38,7 @@
 
         <div class="form-group">
           <label for="filterIssuer">Ente Emittente</label>
-          <select id="filterIssuer" class="form-control">
-            <option value="">Tutti gli Enti</option>
-            <option value="IPA:c_torino">Comune di Torino</option>
-            <option value="IPA:r_piemonte">Regione Piemonte</option>
-            <option value="IPA:m_interno">Ministero dell'Interno</option>
-          </select>
+          <select id="filterIssuer" class="form-control"></select>
         </div>
 
         <div class="form-group">
@@ -106,10 +101,30 @@
       INITIAL_LATEST_LIMIT: 5
     };
 
+    const DEMO_ISSUERS = [
+      { entityId: "", name: "Tutti gli Enti" },
+      { entityId: "IPA:COMUNE-XYZ", name: "Comune di Esempio — Ufficio Protocollo" },
+      { entityId: "IPA:C_ROMA", name: "Comune di Roma" },
+      { entityId: "IPA:C_MILANO", name: "Comune di Milano" },
+      { entityId: "IPA:C_TORINO", name: "Comune di Torino" },
+      { entityId: "IPA:C_NAPOLI", name: "Comune di Napoli" },
+      { entityId: "IPA:C_BOLOGNA", name: "Comune di Bologna" },
+      { entityId: "IPA:C_FIRENZE", name: "Comune di Firenze" },
+      { entityId: "IPA:R_LAZIO", name: "Regione Lazio" },
+      { entityId: "IPA:R_LOMBARDIA", name: "Regione Lombardia" },
+      { entityId: "IPA:R_PIEMONTE", name: "Regione Piemonte" },
+      { entityId: "IPA:R_SICILIA", name: "Regione Siciliana" },
+      { entityId: "IPA:M_INTERNO", name: "Ministero dell'Interno" },
+      { entityId: "IPA:M_GIUSTIZIA", name: "Ministero della Giustizia" },
+      { entityId: "IPA:M_ECONOMIA", name: "Ministero dell'Economia e delle Finanze" },
+      { entityId: "IPA:INPS", name: "INPS" },
+    ];
+
     const DOM = {
       btnSearch: document.getElementById('btnSearch'),
       resultsBody: document.getElementById('resultsBody'),
       resultCount: document.getElementById('resultCount'),
+      filterIssuerSelect: document.getElementById('filterIssuer'),
       filterUidInput: document.getElementById('filterUid'),
       filterDateFromInput: document.getElementById('filterDateFrom'),
       filterDateToInput: document.getElementById('filterDateTo')
@@ -192,6 +207,14 @@
         return this.fetchJson(url);
       },
 
+      async searchByIssuer(issuerEntityID, dateFrom, dateTo) {
+        const qs = new URLSearchParams();
+        qs.set("issuer_entity_id", issuerEntityID);
+        if (dateFrom) qs.set("date_from", dateFrom);
+        if (dateTo) qs.set("date_to", dateTo);
+        return this.fetchJson(`${Config.API_BASE}/get-entries-by-issuer?${qs.toString()}`);
+      },
+
       async searchByDate(dateFrom, dateTo) {
         const qs = new URLSearchParams();
         if (dateFrom) qs.set("date_from", dateFrom);
@@ -202,8 +225,19 @@
 
     const App = {
       init() {
+        this.renderIssuerOptions();
         this.bindEvents();
         this.loadInitialEvents();
+      },
+
+      renderIssuerOptions() {
+        DOM.filterIssuerSelect.innerHTML = "";
+        DEMO_ISSUERS.forEach((issuer) => {
+          const option = document.createElement("option");
+          option.value = issuer.entityId;
+          option.textContent = issuer.name;
+          DOM.filterIssuerSelect.appendChild(option);
+        });
       },
 
       bindEvents() {
@@ -218,6 +252,7 @@
           index,
           date: Utils.formatDate(ev.recorded_at || ev.issued_at),
           dateRaw: Utils.safeStr(ev.recorded_at || ev.issued_at, ""),
+          issuerEntityID: Utils.safeStr(ev?.issuer?.entity_id, ""),
           issuer: Utils.parseIssuer(ev.issuer),
           uid: Utils.safeStr(ev.doc_uid || fallbackUID),
           version: Utils.safeStr(ev.doc_version, "?"),
@@ -267,6 +302,11 @@
           if (toTsExclusive !== null && ts >= toTsExclusive) return false;
           return true;
         });
+      },
+
+      filterRowsByIssuer(rows, issuerEntityID) {
+        if (!issuerEntityID) return rows;
+        return rows.filter((row) => row.issuerEntityID === issuerEntityID);
       },
 
       async loadLatestNotarizedEvents(limit = 5) {
@@ -323,13 +363,14 @@
       },
 
       async handleSearch() {
+        const issuerEntityID = DOM.filterIssuerSelect.value.trim();
         const docUID = DOM.filterUidInput.value.trim();
         const dateFrom = DOM.filterDateFromInput.value.trim();
         const dateTo = DOM.filterDateToInput.value.trim();
 
-        if (!docUID && !dateFrom && !dateTo) {
+        if (!issuerEntityID && !docUID && !dateFrom && !dateTo) {
           this.renderTable([]);
-          DOM.resultCount.innerText = "Inserisci doc_uid o data per cercare";
+          DOM.resultCount.innerText = "Seleziona un ente oppure inserisci doc_uid o data per cercare";
           return;
         }
 
@@ -340,7 +381,11 @@
           if (docUID) {
             const resp = await API.searchByDocUID(docUID);
             rows = this.rowsFromApiResponse(resp);
+            rows = this.filterRowsByIssuer(rows, issuerEntityID);
             rows = this.filterRowsByDate(rows, dateFrom, dateTo);
+          } else if (issuerEntityID) {
+            const resp = await API.searchByIssuer(issuerEntityID, dateFrom, dateTo);
+            rows = this.rowsFromApiResponse(resp);
           } else {
             const resp = await API.searchByDate(dateFrom, dateTo);
             rows = this.rowsFromApiResponse(resp);

@@ -217,6 +217,75 @@ func (h *NotaryHandler) GetEntriesByDate(w http.ResponseWriter, r *http.Request)
 	})
 }
 
+func (h *NotaryHandler) GetEntriesByIssuer(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed. Only GET", http.StatusMethodNotAllowed)
+		return
+	}
+
+	issuerEntityID, ok := requireQueryParam(w, r, "issuer_entity_id", "Missing issuer_entity_id")
+	if !ok {
+		return
+	}
+
+	dateFrom := strings.TrimSpace(r.URL.Query().Get("date_from"))
+	dateTo := strings.TrimSpace(r.URL.Query().Get("date_to"))
+
+	fromStart, err := parseISODateStart(dateFrom)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Invalid date_from: %v", err), http.StatusBadRequest)
+		return
+	}
+	toStart, err := parseISODateStart(dateTo)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Invalid date_to: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	var toEndExclusive time.Time
+	if !toStart.IsZero() {
+		toEndExclusive = toStart.Add(24 * time.Hour)
+	}
+	if !fromStart.IsZero() && !toStart.IsZero() && fromStart.After(toStart) {
+		http.Error(w, "Invalid range: date_from must be <= date_to", http.StatusBadRequest)
+		return
+	}
+
+	indexes, err := h.indexer.GetIndexesByIssuerEntityID(issuerEntityID, fromStart, toEndExclusive)
+	if err != nil {
+		http.Error(w, "DB error", http.StatusInternalServerError)
+		return
+	}
+	if len(indexes) == 0 {
+		http.Error(w, "Not found", http.StatusNotFound)
+		return
+	}
+
+	entries := make([]json.RawMessage, 0, len(indexes))
+	okIndexes := make([]uint64, 0, len(indexes))
+	for _, idx := range indexes {
+		raw, err := h.readEntryByIndex(r.Context(), idx)
+		if err != nil {
+			continue
+		}
+		entries = append(entries, json.RawMessage(raw))
+		okIndexes = append(okIndexes, idx)
+	}
+	if len(entries) == 0 {
+		http.Error(w, "No entries available for this issuer", http.StatusNotFound)
+		return
+	}
+
+	jsonResponse(w, map[string]any{
+		"issuer_entity_id": issuerEntityID,
+		"date_from":        dateFrom,
+		"date_to":          dateTo,
+		"indexes":          okIndexes,
+		"count":            len(entries),
+		"entries":          entries,
+	})
+}
+
 func parseISODateStart(raw string) (time.Time, error) {
 	if raw == "" {
 		return time.Time{}, nil

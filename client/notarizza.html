@@ -25,11 +25,11 @@
       <div class="row">
         <div class="col">
           <label for="issuerId">Issuer Entity ID</label>
-          <input id="issuerId" placeholder="es: IPA:comune-roma" />
+          <select id="issuerId"></select>
         </div>
         <div class="col">
-          <label for="issuerName">Issuer Name <span class="optional">(opzionale)</span></label>
-          <input id="issuerName" placeholder="es: Comune di Roma" />
+          <label for="issuerName">Issuer Name <span class="optional">(auto)</span></label>
+          <input id="issuerName" placeholder="Compilato automaticamente dal menu sopra" readonly />
         </div>
       </div>
 
@@ -106,6 +106,6 @@
     </nav>
   </main>
 
-  <script type="module" src="./notarizzazione.js"></script>
+  <script type="module" src="./notarizzazione.js?"></script>
 </body>
 </html>

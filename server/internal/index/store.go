@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS notary_index (
 	doc_hash             TEXT NOT NULL,
 	leaf_hash            TEXT NOT NULL,
 	doc_uid              TEXT NOT NULL,
+	issuer_entity_id     TEXT NOT NULL,
 	event_id             TEXT NOT NULL UNIQUE,
 	recorded_at_unix_ns  INTEGER NOT NULL
 );`
@@ -26,6 +27,7 @@ CREATE TABLE IF NOT EXISTS notary_index (
 var notaryIndexDDL = []string{
 	`CREATE INDEX IF NOT EXISTS idx_notary_index_doc_hash ON notary_index(doc_hash);`,
 	`CREATE INDEX IF NOT EXISTS idx_notary_index_doc_uid ON notary_index(doc_uid);`,
+	`CREATE INDEX IF NOT EXISTS idx_notary_index_issuer_entity_id ON notary_index(issuer_entity_id);`,
 	`CREATE INDEX IF NOT EXISTS idx_notary_index_leaf_hash ON notary_index(leaf_hash);`,
 	`CREATE INDEX IF NOT EXISTS idx_notary_index_recorded_at_unix_ns ON notary_index(recorded_at_unix_ns);`,
 }
@@ -61,11 +63,12 @@ func createNotaryIndexSchema(db *sql.DB) error {
 	return nil
 }
 
-func (idx *Indexer) AddEntry(docUID, eventID, docHash, leafHash, recordedAt string, logIndex uint64) error {
+func (idx *Indexer) AddEntry(docUID, eventID, docHash, leafHash, issuerEntityID, recordedAt string, logIndex uint64) error {
 	docUID = strings.TrimSpace(docUID)
 	eventID = strings.TrimSpace(eventID)
 	docHash = strings.TrimSpace(docHash)
 	leafHash = strings.TrimSpace(leafHash)
+	issuerEntityID = strings.TrimSpace(issuerEntityID)
 	recordedAt = strings.TrimSpace(recordedAt)
 
 	recordedAtTime, err := time.Parse(time.RFC3339Nano, recordedAt)
@@ -73,10 +76,10 @@ func (idx *Indexer) AddEntry(docUID, eventID, docHash, leafHash, recordedAt stri
 		return fmt.Errorf("invalid recorded_at %q: %w", recordedAt, err)
 	}
 
-	query := `INSERT INTO notary_index (log_index, doc_uid, event_id, doc_hash, leaf_hash, recorded_at_unix_ns)
-	          VALUES (?, ?, ?, ?, ?, ?)`
+	query := `INSERT INTO notary_index (log_index, doc_uid, event_id, doc_hash, leaf_hash, issuer_entity_id, recorded_at_unix_ns)
+	          VALUES (?, ?, ?, ?, ?, ?, ?)`
 
-	_, err = idx.db.Exec(query, logIndex, docUID, eventID, docHash, leafHash, recordedAtTime.UnixNano())
+	_, err = idx.db.Exec(query, logIndex, docUID, eventID, docHash, leafHash, issuerEntityID, recordedAtTime.UnixNano())
 	return err
 }
 
@@ -146,6 +149,55 @@ func (idx *Indexer) GetIndexesByRecordedAtRange(fromInclusive, toExclusive time.
 		FROM notary_index
 		WHERE 1=1`
 	args := make([]any, 0, 2)
+
+	if !fromInclusive.IsZero() {
+		query += ` AND recorded_at_unix_ns >= ?`
+		args = append(args, fromInclusive.UnixNano())
+	}
+	if !toExclusive.IsZero() {
+		query += ` AND recorded_at_unix_ns < ?`
+		args = append(args, toExclusive.UnixNano())
+	}
+	query += ` ORDER BY log_index ASC`
+
+	rows, err := idx.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []uint64
+	for rows.Next() {
+		var i int64
+		if err := rows.Scan(&i); err != nil {
+			return nil, err
+		}
+		if i < 0 {
+			continue
+		}
+		out = append(out, uint64(i))
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// GetIndexesByIssuerEntityID returns all log_index values for an issuer in a time range.
+// Bounds are inclusive for fromInclusive and exclusive for toExclusive.
+// Zero-value bounds are treated as unbounded.
+func (idx *Indexer) GetIndexesByIssuerEntityID(issuerEntityID string, fromInclusive, toExclusive time.Time) ([]uint64, error) {
+	issuerEntityID = strings.TrimSpace(issuerEntityID)
+	if issuerEntityID == "" {
+		return nil, fmt.Errorf("empty issuer_entity_id")
+	}
+
+	query := `
+		SELECT log_index
+		FROM notary_index
+		WHERE issuer_entity_id = ?`
+	args := make([]any, 0, 3)
+	args = append(args, issuerEntityID)
 
 	if !fromInclusive.IsZero() {
 		query += ` AND recorded_at_unix_ns >= ?`

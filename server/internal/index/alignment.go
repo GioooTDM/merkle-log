@@ -96,10 +96,11 @@ func (idx *Indexer) checkSingleEntry(ctx context.Context, reader tessera.LogRead
 
 // indexedRow contiene i metadati di una entry indicizzata nel DB.
 type indexedRow struct {
-	DocUID   string
-	EventID  string
-	DocHash  string
-	LeafHash string
+	DocUID         string
+	EventID        string
+	DocHash        string
+	LeafHash       string
+	IssuerEntityID string
 }
 
 func (idx *Indexer) countIndexedRows() (int64, error) {
@@ -116,10 +117,10 @@ func (idx *Indexer) countIndexedRows() (int64, error) {
 func (idx *Indexer) getIndexedRowByLogIndex(logIndex uint64) (indexedRow, error) {
 	var row indexedRow
 	err := idx.db.QueryRow(`
-		SELECT doc_uid, event_id, doc_hash, leaf_hash
+		SELECT doc_uid, event_id, doc_hash, leaf_hash, issuer_entity_id
 		FROM notary_index
 		WHERE log_index = ?
-	`, logIndex).Scan(&row.DocUID, &row.EventID, &row.DocHash, &row.LeafHash)
+	`, logIndex).Scan(&row.DocUID, &row.EventID, &row.DocHash, &row.LeafHash, &row.IssuerEntityID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return indexedRow{}, sql.ErrNoRows
@@ -134,10 +135,15 @@ type logEntry struct {
 	DocUID      string       `json:"doc_uid"`
 	EventID     string       `json:"event_id"`
 	PayloadHash *payloadHash `json:"payload_hash,omitempty"`
+	Issuer      issuer       `json:"issuer"`
 }
 
 type payloadHash struct {
 	Value string `json:"value"`
+}
+
+type issuer struct {
+	EntityID string `json:"entity_id"`
 }
 
 // validateIndexedRowAgainstEntry confronta una riga del DB con la corrispondente entry del log,
@@ -153,6 +159,9 @@ func validateIndexedRowAgainstEntry(idx uint64, row indexedRow, entryRaw []byte)
 	}
 	if strings.TrimSpace(row.EventID) != strings.TrimSpace(entry.EventID) {
 		return fmt.Errorf("db/log mismatch at index=%d: event_id db=%q log=%q", idx, row.EventID, entry.EventID)
+	}
+	if strings.TrimSpace(row.IssuerEntityID) != strings.TrimSpace(entry.Issuer.EntityID) {
+		return fmt.Errorf("db/log mismatch at index=%d: issuer_entity_id db=%q log=%q", idx, row.IssuerEntityID, entry.Issuer.EntityID)
 	}
 
 	logDocHash := ""
