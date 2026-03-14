@@ -116,6 +116,43 @@ func TestIndexer_GetIndexesByDocUID_NotFound(t *testing.T) {
 	}
 }
 
+func TestIndexer_GetLatestIndexByDocUID(t *testing.T) {
+	idx := newTestIndexer(t)
+
+	if err := idx.AddEntry("DOC-1", "evt-1", strings.Repeat("a", 64), strings.Repeat("1", 64), "IPA:C_ROMA", "2026-01-01T10:00:00Z", 10); err != nil {
+		t.Fatalf("AddEntry #1 error = %v", err)
+	}
+	if err := idx.AddEntry("DOC-1", "evt-2", strings.Repeat("b", 64), strings.Repeat("2", 64), "IPA:C_ROMA", "2026-01-01T10:01:00Z", 12); err != nil {
+		t.Fatalf("AddEntry #2 error = %v", err)
+	}
+	if err := idx.AddEntry("DOC-2", "evt-3", strings.Repeat("c", 64), strings.Repeat("3", 64), "IPA:C_MILANO", "2026-01-01T10:02:00Z", 11); err != nil {
+		t.Fatalf("AddEntry #3 error = %v", err)
+	}
+
+	got, found, err := idx.GetLatestIndexByDocUID("DOC-1")
+	if err != nil {
+		t.Fatalf("GetLatestIndexByDocUID() error = %v", err)
+	}
+	if !found {
+		t.Fatal("GetLatestIndexByDocUID() found = false, want true")
+	}
+	if got != 12 {
+		t.Fatalf("GetLatestIndexByDocUID() = %d, want 12", got)
+	}
+}
+
+func TestIndexer_GetLatestIndexByDocUID_NotFound(t *testing.T) {
+	idx := newTestIndexer(t)
+
+	got, found, err := idx.GetLatestIndexByDocUID("NONEXISTENT")
+	if err != nil {
+		t.Fatalf("GetLatestIndexByDocUID() error = %v", err)
+	}
+	if found {
+		t.Fatalf("GetLatestIndexByDocUID() found = true with index %d, want false", got)
+	}
+}
+
 func TestIndexer_Constraints(t *testing.T) {
 	idx := newTestIndexer(t)
 

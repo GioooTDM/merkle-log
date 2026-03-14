@@ -2,6 +2,7 @@ package index
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -138,6 +139,33 @@ func (idx *Indexer) GetIndexesByDocUID(docUID string) ([]uint64, error) {
 		return nil, err
 	}
 	return out, nil
+}
+
+// GetLatestIndexByDocUID returns the highest log_index for a given doc_uid.
+func (idx *Indexer) GetLatestIndexByDocUID(docUID string) (uint64, bool, error) {
+	docUID = strings.TrimSpace(docUID)
+	if docUID == "" {
+		return 0, false, fmt.Errorf("empty doc_uid")
+	}
+
+	var i int64
+	err := idx.db.QueryRow(`
+		SELECT log_index
+		FROM notary_index
+		WHERE doc_uid = ?
+		ORDER BY log_index DESC
+		LIMIT 1
+	`, docUID).Scan(&i)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	if i < 0 {
+		return 0, false, fmt.Errorf("invalid negative log_index %d", i)
+	}
+	return uint64(i), true, nil
 }
 
 // GetIndexesByRecordedAtRange returns all log_index values in a time range.

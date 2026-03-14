@@ -21,6 +21,9 @@ const eventSchema = "pa-notary-event@1"
 type PreparedAddEvent struct {
 	DocUID         string
 	EventID        string
+	EventType      string
+	DocVersion     int
+	PrevEventID    *string
 	DocHash        string
 	IssuerEntityID string
 	RecordedAt     string
@@ -151,6 +154,9 @@ func PrepareAddEventForNotarizationWithMode(raw []byte, now time.Time, useIssued
 	return PreparedAddEvent{
 		DocUID:         stored.DocUID,
 		EventID:        eventID,
+		EventType:      stored.EventType,
+		DocVersion:     stored.DocVersion,
+		PrevEventID:    prevEventID,
 		DocHash:        docHash,
 		IssuerEntityID: stored.Issuer.EntityID,
 		RecordedAt:     stored.RecordedAt,
