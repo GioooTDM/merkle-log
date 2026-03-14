@@ -30,10 +30,10 @@ func TestIndexer_GetByDocHash_ReturnsLatest(t *testing.T) {
 	leaf1 := strings.Repeat("1", 64)
 	leaf2 := strings.Repeat("2", 64)
 
-	if err := idx.AddEntry("DOC-1", "evt-1", docHash, leaf1, "IPA:C_ROMA", "2026-01-01T10:00:00Z", 10); err != nil {
+	if err := idx.AddEntry(Entry{LogIndex: 10, DocUID: "DOC-1", EventID: "evt-1", DocHash: docHash, LeafHash: leaf1, IssuerEntityID: "IPA:C_ROMA", RecordedAt: "2026-01-01T10:00:00Z"}); err != nil {
 		t.Fatalf("AddEntry #1 error = %v", err)
 	}
-	if err := idx.AddEntry("DOC-1", "evt-2", docHash, leaf2, "IPA:C_ROMA", "2026-01-01T10:01:00Z", 11); err != nil {
+	if err := idx.AddEntry(Entry{LogIndex: 11, DocUID: "DOC-1", EventID: "evt-2", DocHash: docHash, LeafHash: leaf2, IssuerEntityID: "IPA:C_ROMA", RecordedAt: "2026-01-01T10:01:00Z"}); err != nil {
 		t.Fatalf("AddEntry #2 error = %v", err)
 	}
 
@@ -62,7 +62,7 @@ func TestIndexer_GetByLeafHash_ReturnsIndex(t *testing.T) {
 	idx := newTestIndexer(t)
 
 	leaf := strings.Repeat("1", 64)
-	if err := idx.AddEntry("DOC-1", "evt-1", strings.Repeat("a", 64), leaf, "IPA:C_ROMA", "2026-01-01T10:00:00Z", 10); err != nil {
+	if err := idx.AddEntry(Entry{LogIndex: 10, DocUID: "DOC-1", EventID: "evt-1", DocHash: strings.Repeat("a", 64), LeafHash: leaf, IssuerEntityID: "IPA:C_ROMA", RecordedAt: "2026-01-01T10:00:00Z"}); err != nil {
 		t.Fatalf("AddEntry() error = %v", err)
 	}
 
@@ -87,10 +87,10 @@ func TestIndexer_GetByLeafHash_NotFound(t *testing.T) {
 func TestIndexer_GetIndexesByDocUID_ReturnsAllAscending(t *testing.T) {
 	idx := newTestIndexer(t)
 
-	if err := idx.AddEntry("DOC-1", "evt-1", strings.Repeat("a", 64), strings.Repeat("1", 64), "IPA:C_ROMA", "2026-01-01T10:00:00Z", 10); err != nil {
+	if err := idx.AddEntry(Entry{LogIndex: 10, DocUID: "DOC-1", EventID: "evt-1", DocHash: strings.Repeat("a", 64), LeafHash: strings.Repeat("1", 64), IssuerEntityID: "IPA:C_ROMA", RecordedAt: "2026-01-01T10:00:00Z"}); err != nil {
 		t.Fatalf("AddEntry #1 error = %v", err)
 	}
-	if err := idx.AddEntry("DOC-1", "evt-2", strings.Repeat("a", 64), strings.Repeat("2", 64), "IPA:C_ROMA", "2026-01-01T10:01:00Z", 11); err != nil {
+	if err := idx.AddEntry(Entry{LogIndex: 11, DocUID: "DOC-1", EventID: "evt-2", DocHash: strings.Repeat("a", 64), LeafHash: strings.Repeat("2", 64), IssuerEntityID: "IPA:C_ROMA", RecordedAt: "2026-01-01T10:01:00Z"}); err != nil {
 		t.Fatalf("AddEntry #2 error = %v", err)
 	}
 
@@ -119,13 +119,13 @@ func TestIndexer_GetIndexesByDocUID_NotFound(t *testing.T) {
 func TestIndexer_GetLatestIndexByDocUID(t *testing.T) {
 	idx := newTestIndexer(t)
 
-	if err := idx.AddEntry("DOC-1", "evt-1", strings.Repeat("a", 64), strings.Repeat("1", 64), "IPA:C_ROMA", "2026-01-01T10:00:00Z", 10); err != nil {
+	if err := idx.AddEntry(Entry{LogIndex: 10, DocUID: "DOC-1", EventID: "evt-1", DocHash: strings.Repeat("a", 64), LeafHash: strings.Repeat("1", 64), IssuerEntityID: "IPA:C_ROMA", RecordedAt: "2026-01-01T10:00:00Z"}); err != nil {
 		t.Fatalf("AddEntry #1 error = %v", err)
 	}
-	if err := idx.AddEntry("DOC-1", "evt-2", strings.Repeat("b", 64), strings.Repeat("2", 64), "IPA:C_ROMA", "2026-01-01T10:01:00Z", 12); err != nil {
+	if err := idx.AddEntry(Entry{LogIndex: 12, DocUID: "DOC-1", EventID: "evt-2", DocHash: strings.Repeat("b", 64), LeafHash: strings.Repeat("2", 64), IssuerEntityID: "IPA:C_ROMA", RecordedAt: "2026-01-01T10:01:00Z"}); err != nil {
 		t.Fatalf("AddEntry #2 error = %v", err)
 	}
-	if err := idx.AddEntry("DOC-2", "evt-3", strings.Repeat("c", 64), strings.Repeat("3", 64), "IPA:C_MILANO", "2026-01-01T10:02:00Z", 11); err != nil {
+	if err := idx.AddEntry(Entry{LogIndex: 11, DocUID: "DOC-2", EventID: "evt-3", DocHash: strings.Repeat("c", 64), LeafHash: strings.Repeat("3", 64), IssuerEntityID: "IPA:C_MILANO", RecordedAt: "2026-01-01T10:02:00Z"}); err != nil {
 		t.Fatalf("AddEntry #3 error = %v", err)
 	}
 
@@ -156,15 +156,15 @@ func TestIndexer_GetLatestIndexByDocUID_NotFound(t *testing.T) {
 func TestIndexer_Constraints(t *testing.T) {
 	idx := newTestIndexer(t)
 
-	if err := idx.AddEntry("DOC-1", "evt-1", strings.Repeat("a", 64), strings.Repeat("1", 64), "IPA:C_ROMA", "2026-01-01T10:00:00Z", 7); err != nil {
+	if err := idx.AddEntry(Entry{LogIndex: 7, DocUID: "DOC-1", EventID: "evt-1", DocHash: strings.Repeat("a", 64), LeafHash: strings.Repeat("1", 64), IssuerEntityID: "IPA:C_ROMA", RecordedAt: "2026-01-01T10:00:00Z"}); err != nil {
 		t.Fatalf("AddEntry() seed error = %v", err)
 	}
 
-	if err := idx.AddEntry("DOC-2", "evt-2", strings.Repeat("b", 64), strings.Repeat("2", 64), "IPA:C_MILANO", "2026-01-01T10:01:00Z", 7); err == nil {
+	if err := idx.AddEntry(Entry{LogIndex: 7, DocUID: "DOC-2", EventID: "evt-2", DocHash: strings.Repeat("b", 64), LeafHash: strings.Repeat("2", 64), IssuerEntityID: "IPA:C_MILANO", RecordedAt: "2026-01-01T10:01:00Z"}); err == nil {
 		t.Fatal("expected error on duplicate log_index, got nil")
 	}
 
-	if err := idx.AddEntry("DOC-2", "evt-1", strings.Repeat("b", 64), strings.Repeat("3", 64), "IPA:C_MILANO", "2026-01-01T10:02:00Z", 8); err == nil {
+	if err := idx.AddEntry(Entry{LogIndex: 8, DocUID: "DOC-2", EventID: "evt-1", DocHash: strings.Repeat("b", 64), LeafHash: strings.Repeat("3", 64), IssuerEntityID: "IPA:C_MILANO", RecordedAt: "2026-01-01T10:02:00Z"}); err == nil {
 		t.Fatal("expected error on duplicate event_id, got nil")
 	}
 }
@@ -172,13 +172,13 @@ func TestIndexer_Constraints(t *testing.T) {
 func TestIndexer_GetIndexesByRecordedAtRange(t *testing.T) {
 	idx := newTestIndexer(t)
 
-	if err := idx.AddEntry("DOC-1", "evt-1", strings.Repeat("a", 64), strings.Repeat("1", 64), "IPA:C_ROMA", "2026-01-01T10:00:00Z", 10); err != nil {
+	if err := idx.AddEntry(Entry{LogIndex: 10, DocUID: "DOC-1", EventID: "evt-1", DocHash: strings.Repeat("a", 64), LeafHash: strings.Repeat("1", 64), IssuerEntityID: "IPA:C_ROMA", RecordedAt: "2026-01-01T10:00:00Z"}); err != nil {
 		t.Fatalf("AddEntry #1 error = %v", err)
 	}
-	if err := idx.AddEntry("DOC-2", "evt-2", strings.Repeat("b", 64), strings.Repeat("2", 64), "IPA:C_MILANO", "2026-01-02T10:00:00Z", 11); err != nil {
+	if err := idx.AddEntry(Entry{LogIndex: 11, DocUID: "DOC-2", EventID: "evt-2", DocHash: strings.Repeat("b", 64), LeafHash: strings.Repeat("2", 64), IssuerEntityID: "IPA:C_MILANO", RecordedAt: "2026-01-02T10:00:00Z"}); err != nil {
 		t.Fatalf("AddEntry #2 error = %v", err)
 	}
-	if err := idx.AddEntry("DOC-3", "evt-3", strings.Repeat("c", 64), strings.Repeat("3", 64), "IPA:C_TORINO", "2026-01-03T10:00:00Z", 12); err != nil {
+	if err := idx.AddEntry(Entry{LogIndex: 12, DocUID: "DOC-3", EventID: "evt-3", DocHash: strings.Repeat("c", 64), LeafHash: strings.Repeat("3", 64), IssuerEntityID: "IPA:C_TORINO", RecordedAt: "2026-01-03T10:00:00Z"}); err != nil {
 		t.Fatalf("AddEntry #3 error = %v", err)
 	}
 
@@ -198,13 +198,13 @@ func TestIndexer_GetIndexesByRecordedAtRange(t *testing.T) {
 func TestIndexer_GetIndexesByIssuerEntityID(t *testing.T) {
 	idx := newTestIndexer(t)
 
-	if err := idx.AddEntry("DOC-1", "evt-1", strings.Repeat("a", 64), strings.Repeat("1", 64), "IPA:C_ROMA", "2026-01-01T10:00:00Z", 10); err != nil {
+	if err := idx.AddEntry(Entry{LogIndex: 10, DocUID: "DOC-1", EventID: "evt-1", DocHash: strings.Repeat("a", 64), LeafHash: strings.Repeat("1", 64), IssuerEntityID: "IPA:C_ROMA", RecordedAt: "2026-01-01T10:00:00Z"}); err != nil {
 		t.Fatalf("AddEntry #1 error = %v", err)
 	}
-	if err := idx.AddEntry("DOC-2", "evt-2", strings.Repeat("b", 64), strings.Repeat("2", 64), "IPA:C_MILANO", "2026-01-02T10:00:00Z", 11); err != nil {
+	if err := idx.AddEntry(Entry{LogIndex: 11, DocUID: "DOC-2", EventID: "evt-2", DocHash: strings.Repeat("b", 64), LeafHash: strings.Repeat("2", 64), IssuerEntityID: "IPA:C_MILANO", RecordedAt: "2026-01-02T10:00:00Z"}); err != nil {
 		t.Fatalf("AddEntry #2 error = %v", err)
 	}
-	if err := idx.AddEntry("DOC-3", "evt-3", strings.Repeat("c", 64), strings.Repeat("3", 64), "IPA:C_ROMA", "2026-01-03T10:00:00Z", 12); err != nil {
+	if err := idx.AddEntry(Entry{LogIndex: 12, DocUID: "DOC-3", EventID: "evt-3", DocHash: strings.Repeat("c", 64), LeafHash: strings.Repeat("3", 64), IssuerEntityID: "IPA:C_ROMA", RecordedAt: "2026-01-03T10:00:00Z"}); err != nil {
 		t.Fatalf("AddEntry #3 error = %v", err)
 	}
 

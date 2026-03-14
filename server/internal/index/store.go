@@ -14,6 +14,16 @@ type Indexer struct {
 	db *sql.DB
 }
 
+type Entry struct {
+	LogIndex       uint64
+	DocUID         string
+	EventID        string
+	DocHash        string
+	LeafHash       string
+	IssuerEntityID string
+	RecordedAt     string
+}
+
 const createNotaryIndexTableSQL = `
 CREATE TABLE IF NOT EXISTS notary_index (
 	log_index            INTEGER PRIMARY KEY,
@@ -64,23 +74,23 @@ func createNotaryIndexSchema(db *sql.DB) error {
 	return nil
 }
 
-func (idx *Indexer) AddEntry(docUID, eventID, docHash, leafHash, issuerEntityID, recordedAt string, logIndex uint64) error {
-	docUID = strings.TrimSpace(docUID)
-	eventID = strings.TrimSpace(eventID)
-	docHash = strings.TrimSpace(docHash)
-	leafHash = strings.TrimSpace(leafHash)
-	issuerEntityID = strings.TrimSpace(issuerEntityID)
-	recordedAt = strings.TrimSpace(recordedAt)
+func (idx *Indexer) AddEntry(entry Entry) error {
+	entry.DocUID = strings.TrimSpace(entry.DocUID)
+	entry.EventID = strings.TrimSpace(entry.EventID)
+	entry.DocHash = strings.TrimSpace(entry.DocHash)
+	entry.LeafHash = strings.TrimSpace(entry.LeafHash)
+	entry.IssuerEntityID = strings.TrimSpace(entry.IssuerEntityID)
+	entry.RecordedAt = strings.TrimSpace(entry.RecordedAt)
 
-	recordedAtTime, err := time.Parse(time.RFC3339Nano, recordedAt)
+	recordedAtTime, err := time.Parse(time.RFC3339Nano, entry.RecordedAt)
 	if err != nil {
-		return fmt.Errorf("invalid recorded_at %q: %w", recordedAt, err)
+		return fmt.Errorf("invalid recorded_at %q: %w", entry.RecordedAt, err)
 	}
 
 	query := `INSERT INTO notary_index (log_index, doc_uid, event_id, doc_hash, leaf_hash, issuer_entity_id, recorded_at_unix_ns)
 	          VALUES (?, ?, ?, ?, ?, ?, ?)`
 
-	_, err = idx.db.Exec(query, logIndex, docUID, eventID, docHash, leafHash, issuerEntityID, recordedAtTime.UnixNano())
+	_, err = idx.db.Exec(query, entry.LogIndex, entry.DocUID, entry.EventID, entry.DocHash, entry.LeafHash, entry.IssuerEntityID, recordedAtTime.UnixNano())
 	return err
 }
 

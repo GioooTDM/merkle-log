@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"merkle-log/server/internal/event"
+	"merkle-log/server/internal/index"
 
 	"github.com/transparency-dev/tessera"
 )
@@ -52,7 +53,15 @@ func (h *NotaryHandler) AddEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 3. Indicizzazione asincrona (opzionale) o sincrona
-	if err := h.indexer.AddEntry(parsed.DocUID, parsed.EventID, parsed.DocHash, leafHash, parsed.IssuerEntityID, parsed.RecordedAt, idx.Index); err != nil {
+	if err := h.indexer.AddEntry(index.Entry{
+		LogIndex:       idx.Index,
+		DocUID:         parsed.DocUID,
+		EventID:        parsed.EventID,
+		DocHash:        parsed.DocHash,
+		LeafHash:       leafHash,
+		IssuerEntityID: parsed.IssuerEntityID,
+		RecordedAt:     parsed.RecordedAt,
+	}); err != nil {
 		log.Printf("indexing error for event_id=%s doc_uid=%s index=%d: %v", parsed.EventID, parsed.DocUID, idx.Index, err)
 		// Non blocchiamo la risposta se il log è ok ma l'indice fallisce,
 		// ma in produzione andrebbe gestito meglio
