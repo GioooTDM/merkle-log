@@ -6,7 +6,7 @@
   <title>PA Notary — Consultazione Registro</title>
   <link rel="stylesheet" href="style.css">
   <style>
-    .filter-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
+    .filter-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px 20px; margin-bottom: 20px; }
     .form-group { display: flex; flex-direction: column; }
     .form-group label { font-size: 0.85rem; font-weight: bold; color: #555; margin-bottom: 5px; }
     .form-control { padding: 8px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.95rem; }
@@ -35,17 +35,14 @@
     <section class="card">
       <h3>Parametri di Ricerca</h3>
       <div class="filter-grid">
-
         <div class="form-group">
           <label for="filterIssuer">Ente Emittente</label>
           <select id="filterIssuer" class="form-control"></select>
         </div>
-
         <div class="form-group">
           <label for="filterUid">ID Documento (UID)</label>
           <input type="text" id="filterUid" class="form-control" placeholder="Es. CERTIFICATO/2026/2150">
         </div>
-
         <div class="form-group">
           <label for="filterDateFrom">Data Inizio</label>
           <input type="date" id="filterDateFrom" class="form-control">
@@ -54,9 +51,9 @@
           <label for="filterDateTo">Data Fine</label>
           <input type="date" id="filterDateTo" class="form-control">
         </div>
-
       </div>
       <div style="text-align: right;">
+        <button class="btn" id="btnClearFilters" style="padding: 8px 16px; margin-right: 10px;">Cancella Filtri</button>
         <button class="btn" id="btnSearch" style="padding: 8px 20px;">Applica Filtri</button>
       </div>
     </section>
@@ -113,6 +110,7 @@
     };
 
     const DOM = {
+      btnClearFilters: el('btnClearFilters'),
       btnSearch: el('btnSearch'),
       resultsBody: el('resultsBody'),
       resultCount: el('resultCount'),
@@ -191,9 +189,17 @@
 
       bindEvents() {
         DOM.btnSearch.addEventListener('click', () => this.handleSearch());
+        DOM.btnClearFilters.addEventListener('click', () => this.clearFilters());
         DOM.filterUidInput.addEventListener('keydown', (e) => {
           if (e.key === "Enter") this.handleSearch();
         });
+      },
+
+      clearFilters() {
+        DOM.filterIssuerSelect.selectedIndex = 0;
+        DOM.filterUidInput.value = "";
+        DOM.filterDateFromInput.value = "";
+        DOM.filterDateToInput.value = "";
       },
 
       rowFromEvent(ev, index, fallbackUID = "") {
