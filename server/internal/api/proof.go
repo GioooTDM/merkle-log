@@ -14,7 +14,7 @@ import (
 	tclient "github.com/transparency-dev/tessera/client"
 )
 
-func (h *NotaryHandler) GetEntry(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) GetEntry(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed. Only GET", http.StatusMethodNotAllowed)
 		return
@@ -41,7 +41,7 @@ func (h *NotaryHandler) GetEntry(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(entry)
 }
 
-func (h *NotaryHandler) GetProof(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) GetProof(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed. Only GET", http.StatusMethodNotAllowed)
 		return
@@ -91,7 +91,7 @@ func (h *NotaryHandler) GetProof(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *NotaryHandler) GetConsistencyProof(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) GetConsistencyProof(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed. Only GET", http.StatusMethodNotAllowed)
 		return
@@ -160,7 +160,7 @@ func parseUintQuery(r *http.Request, key string) (uint64, error) {
 
 // tileFetcher returns a TileFetcherFunc compatible with tessera client proof builder.
 // If partial tiles are unavailable, it falls back to the corresponding full tile.
-func (h *NotaryHandler) tileFetcher() func(ctx context.Context, level, index uint64, p uint8) ([]byte, error) {
+func (h *Handler) tileFetcher() func(ctx context.Context, level, index uint64, p uint8) ([]byte, error) {
 	return func(ctx context.Context, level, index uint64, p uint8) ([]byte, error) {
 		b, err := h.reader.ReadTile(ctx, level, index, p)
 		if err == nil {

@@ -20,7 +20,7 @@ func requireQueryParam(w http.ResponseWriter, r *http.Request, key, missingMsg s
 }
 
 // TODO: attenzione, ci potrebbero essere più eventi notarizzati con lo stesso doc hash. Lo stesso documento può essere notarizzato più volte in contesti diversi.
-func (h *NotaryHandler) GetByDoc(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) GetByDoc(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed. Only GET", http.StatusMethodNotAllowed)
 		return
@@ -43,7 +43,7 @@ func (h *NotaryHandler) GetByDoc(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *NotaryHandler) GetByLeaf(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) GetByLeaf(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed. Only GET", http.StatusMethodNotAllowed)
 		return
@@ -63,7 +63,7 @@ func (h *NotaryHandler) GetByLeaf(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, map[string]any{"log_index": logIndex})
 }
 
-func (h *NotaryHandler) GetIndexesByDocUID(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) GetIndexesByDocUID(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed. Only GET", http.StatusMethodNotAllowed)
 		return
@@ -91,7 +91,7 @@ func (h *NotaryHandler) GetIndexesByDocUID(w http.ResponseWriter, r *http.Reques
 	})
 }
 
-func (h *NotaryHandler) GetEntriesByDocUID(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) GetEntriesByDocUID(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed. Only GET", http.StatusMethodNotAllowed)
 		return
@@ -150,7 +150,7 @@ func (h *NotaryHandler) GetEntriesByDocUID(w http.ResponseWriter, r *http.Reques
 	})
 }
 
-func (h *NotaryHandler) GetEntriesByDate(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) GetEntriesByDate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed. Only GET", http.StatusMethodNotAllowed)
 		return
@@ -217,7 +217,7 @@ func (h *NotaryHandler) GetEntriesByDate(w http.ResponseWriter, r *http.Request)
 	})
 }
 
-func (h *NotaryHandler) GetEntriesByIssuer(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) GetEntriesByIssuer(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed. Only GET", http.StatusMethodNotAllowed)
 		return

@@ -73,7 +73,7 @@ func main() {
 	anchorWorker := initAnchorWorker(ctx, logReader, *anchorFile, *anchorInterval)
 
 	// 2. Setup Handlers
-	h := api.NewNotaryHandler(appender, indexer, logReader)
+	h := api.NewHandler(appender, indexer, logReader)
 	h.SetDevMode(*devMode)
 	mux := http.NewServeMux()
 

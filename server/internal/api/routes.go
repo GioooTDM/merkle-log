@@ -6,7 +6,7 @@ import (
 	"merkle-log/server/internal/anchor"
 )
 
-func RegisterRoutes(mux *http.ServeMux, h *NotaryHandler, anchorWorker *anchor.Worker) {
+func RegisterRoutes(mux *http.ServeMux, h *Handler, anchorWorker *anchor.Worker) {
 	mux.HandleFunc("/add", h.AddEvent)
 	mux.HandleFunc("/get-by-doc", h.GetByDoc)
 	mux.HandleFunc("/get-by-leaf", h.GetByLeaf)

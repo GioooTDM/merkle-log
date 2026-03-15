@@ -16,7 +16,7 @@ import (
 	"github.com/transparency-dev/tessera"
 )
 
-func (h *NotaryHandler) AddEvent(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) AddEvent(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed. Only POST", http.StatusMethodNotAllowed)
 		return
@@ -86,7 +86,7 @@ func (h *NotaryHandler) AddEvent(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *NotaryHandler) resolveDocumentVersion(ctx context.Context, req event.AddEventRequest) (int, error) {
+func (h *Handler) resolveDocumentVersion(ctx context.Context, req event.AddEventRequest) (int, error) {
 	if req.DocUID == "" {
 		return 0, fmt.Errorf("doc_uid is required")
 	}

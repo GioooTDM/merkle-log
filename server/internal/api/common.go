@@ -38,7 +38,7 @@ func jsonResponse(w http.ResponseWriter, data any) {
 
 // readEntryByIndex keeps the handler-facing entry lookup API.
 // The protocol-level read path is centralized in internal/logread.
-func (h *NotaryHandler) readEntryByIndex(ctx context.Context, idx uint64) ([]byte, error) {
+func (h *Handler) readEntryByIndex(ctx context.Context, idx uint64) ([]byte, error) {
 	size, err := logread.PublishedTreeSize(ctx, h.reader)
 	if err != nil {
 		return nil, err

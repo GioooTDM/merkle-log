@@ -6,17 +6,17 @@ import (
 	"github.com/transparency-dev/tessera"
 )
 
-type NotaryHandler struct {
+type Handler struct {
 	appender                *tessera.Appender
 	indexer                 *index.Indexer
 	reader                  tessera.LogReader
 	useIssuedAtAsRecordedAt bool
 }
 
-func NewNotaryHandler(a *tessera.Appender, i *index.Indexer, r tessera.LogReader) *NotaryHandler {
-	return &NotaryHandler{appender: a, indexer: i, reader: r}
+func NewHandler(a *tessera.Appender, i *index.Indexer, r tessera.LogReader) *Handler {
+	return &Handler{appender: a, indexer: i, reader: r}
 }
 
-func (h *NotaryHandler) SetDevMode(enabled bool) {
+func (h *Handler) SetDevMode(enabled bool) {
 	h.useIssuedAtAsRecordedAt = enabled
 }
