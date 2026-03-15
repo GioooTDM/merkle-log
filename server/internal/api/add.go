@@ -16,12 +16,6 @@ import (
 	"github.com/transparency-dev/tessera"
 )
 
-type addEventRequestOverview struct {
-	EventType   string  `json:"event_type"`
-	DocUID      string  `json:"doc_uid"`
-	PrevEventID *string `json:"prev_event_id,omitempty"`
-}
-
 func (h *NotaryHandler) AddEvent(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed. Only POST", http.StatusMethodNotAllowed)
@@ -34,7 +28,7 @@ func (h *NotaryHandler) AddEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req, err := inspectAddEventRequest(body)
+	req, err := event.DecodeAddEventRequest(body)
 	if err != nil {
 		http.Error(w, "Invalid add payload: "+err.Error(), http.StatusBadRequest)
 		return
@@ -48,7 +42,7 @@ func (h *NotaryHandler) AddEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	prepared, canonicalBody, err := event.PrepareAddEventForNotarizationWithMode(body, time.Now().UTC(), docVersion, h.useIssuedAtAsRecordedAt)
+	prepared, canonicalBody, err := event.PrepareDecodedAddEventForNotarizationWithMode(req, time.Now().UTC(), docVersion, h.useIssuedAtAsRecordedAt)
 	if err != nil {
 		http.Error(w, "Invalid add payload: "+err.Error(), http.StatusBadRequest)
 		return
@@ -93,33 +87,13 @@ func (h *NotaryHandler) AddEvent(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func inspectAddEventRequest(raw []byte) (addEventRequestOverview, error) {
-	if len(raw) == 0 {
-		return addEventRequestOverview{}, fmt.Errorf("empty body")
-	}
-
-	var req addEventRequestOverview
-	if err := json.Unmarshal(raw, &req); err != nil {
-		return addEventRequestOverview{}, fmt.Errorf("invalid JSON structure: %w", err)
-	}
-
-	req.EventType = strings.ToUpper(strings.TrimSpace(req.EventType))
-	req.DocUID = strings.TrimSpace(req.DocUID)
-	if req.PrevEventID != nil {
-		trimmedPrev := strings.TrimSpace(*req.PrevEventID)
-		req.PrevEventID = &trimmedPrev
-	}
-
-	return req, nil
-}
-
 type chainHeadEntry struct {
 	EventID    string `json:"event_id"`
 	DocUID     string `json:"doc_uid"`
 	DocVersion int    `json:"doc_version"`
 }
 
-func (h *NotaryHandler) resolveDocumentVersion(ctx context.Context, req addEventRequestOverview) (int, error) {
+func (h *NotaryHandler) resolveDocumentVersion(ctx context.Context, req event.AddEventRequest) (int, error) {
 	if req.DocUID == "" {
 		return 0, fmt.Errorf("doc_uid is required")
 	}

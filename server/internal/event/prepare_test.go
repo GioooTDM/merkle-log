@@ -1,6 +1,7 @@
 package event
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 )
@@ -195,4 +196,109 @@ func TestRejectServerManagedFields(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDecodeAddEventRequest(t *testing.T) {
+	validHash := "hex:aabbccdd00112233445566778899aabbccddeeff00112233445566778899aabb"
+
+	tests := []struct {
+		name    string
+		input   []byte
+		wantErr bool
+		check   func(t *testing.T, got AddEventRequest)
+	}{
+		{
+			name:    "empty body",
+			input:   []byte{},
+			wantErr: true,
+		},
+		{
+			name: "fields are normalized",
+			input: mustJSON(t, map[string]any{
+				"schema":        "pa-notary-event@1",
+				"event_type":    " update ",
+				"doc_uid":       " DOC/1 ",
+				"prev_event_id": " 550e8400-e29b-41d4-a716-446655440000 ",
+				"payload_hash": map[string]any{
+					"alg":   "sha-256",
+					"value": validHash,
+				},
+				"issuer": map[string]any{
+					"entity_id": "  IPA:TEST  ",
+					"name":      "  Ente Test  ",
+				},
+				"issued_at":   "2026-01-01T10:00:00Z",
+				"title":       "  Titolo  ",
+				"description": "  Desc  ",
+				"notes":       "  Note  ",
+			}),
+			check: func(t *testing.T, got AddEventRequest) {
+				t.Helper()
+				if got.EventType != "UPDATE" {
+					t.Errorf("EventType = %q, want UPDATE", got.EventType)
+				}
+				if got.DocUID != "DOC/1" {
+					t.Errorf("DocUID = %q, want DOC/1", got.DocUID)
+				}
+				if got.PrevEventID == nil || *got.PrevEventID != "550e8400-e29b-41d4-a716-446655440000" {
+					t.Errorf("PrevEventID = %v, want trimmed UUID", got.PrevEventID)
+				}
+				if got.Issuer.EntityID != "IPA:TEST" {
+					t.Errorf("Issuer.EntityID = %q, want IPA:TEST", got.Issuer.EntityID)
+				}
+				if got.Issuer.Name != "Ente Test" {
+					t.Errorf("Issuer.Name = %q, want Ente Test", got.Issuer.Name)
+				}
+				if got.Title != "Titolo" {
+					t.Errorf("Title = %q, want Titolo", got.Title)
+				}
+				if got.Description != "Desc" {
+					t.Errorf("Description = %q, want Desc", got.Description)
+				}
+				if got.Notes != "Note" {
+					t.Errorf("Notes = %q, want Note", got.Notes)
+				}
+			},
+		},
+		{
+			name: "server managed fields rejected",
+			input: mustJSON(t, map[string]any{
+				"schema":   "pa-notary-event@1",
+				"event_id": "some-id",
+			}),
+			wantErr: true,
+		},
+		{
+			name:    "invalid JSON rejected",
+			input:   []byte(`{not valid`),
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := DecodeAddEventRequest(tc.input)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if tc.check != nil {
+				tc.check(t, got)
+			}
+		})
+	}
+}
+
+func mustJSON(t *testing.T, v any) []byte {
+	t.Helper()
+	raw, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	return raw
 }

@@ -18,7 +18,7 @@ import (
 
 const eventSchema = "pa-notary-event@1"
 
-type addEventRequest struct {
+type AddEventRequest struct {
 	Schema        string       `json:"schema"`
 	EventType     string       `json:"event_type"`
 	DocUID        string       `json:"doc_uid"`
@@ -66,21 +66,9 @@ func (e PreparedEvent) DocHash() (string, error) {
 	return hashutil.ParsePayloadHashValue(e.PayloadHash.Value)
 }
 
-func PrepareAddEventForNotarization(raw []byte, now time.Time, docVersion int) (PreparedEvent, []byte, error) {
-	return PrepareAddEventForNotarizationWithMode(raw, now, docVersion, false)
-}
-
-func PrepareAddEventForNotarizationWithMode(raw []byte, now time.Time, docVersion int, useIssuedAtAsRecordedAt bool) (PreparedEvent, []byte, error) {
-	if len(raw) == 0 {
-		return PreparedEvent{}, nil, fmt.Errorf("empty body")
-	}
+func PrepareDecodedAddEventForNotarizationWithMode(req AddEventRequest, now time.Time, docVersion int, useIssuedAtAsRecordedAt bool) (PreparedEvent, []byte, error) {
 	if docVersion < 1 {
 		return PreparedEvent{}, nil, fmt.Errorf("doc_version must be >= 1")
-	}
-
-	req, err := decodeAddEventRequest(raw)
-	if err != nil {
-		return PreparedEvent{}, nil, err
 	}
 
 	docHash, issuedAt, err := validateAddEventRequest(req)
@@ -104,21 +92,35 @@ func PrepareAddEventForNotarizationWithMode(raw []byte, now time.Time, docVersio
 	return prepared, canon, nil
 }
 
-func decodeAddEventRequest(raw []byte) (addEventRequest, error) {
-	if err := rejectServerManagedFields(raw); err != nil {
-		return addEventRequest{}, err
+func DecodeAddEventRequest(raw []byte) (AddEventRequest, error) {
+	if len(raw) == 0 {
+		return AddEventRequest{}, fmt.Errorf("empty body")
 	}
 
-	var req addEventRequest
+	if err := rejectServerManagedFields(raw); err != nil {
+		return AddEventRequest{}, err
+	}
+
+	var req AddEventRequest
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&req); err != nil {
-		return addEventRequest{}, fmt.Errorf("invalid JSON structure: %w", err)
+		return AddEventRequest{}, fmt.Errorf("invalid JSON structure: %w", err)
 	}
 	var trailing any
 	if err := dec.Decode(&trailing); err != nil && !errors.Is(err, io.EOF) {
-		return addEventRequest{}, fmt.Errorf("invalid trailing data in JSON body")
+		return AddEventRequest{}, fmt.Errorf("invalid trailing data in JSON body")
 	}
+
+	req.EventType = normalizedEventType(req.EventType)
+	req.DocUID = strings.TrimSpace(req.DocUID)
+	req.PrevEventID = trimmedOptionalString(req.PrevEventID)
+	req.Issuer.EntityID = strings.TrimSpace(req.Issuer.EntityID)
+	req.Issuer.Name = strings.TrimSpace(req.Issuer.Name)
+	req.Title = strings.TrimSpace(req.Title)
+	req.Description = strings.TrimSpace(req.Description)
+	req.Notes = strings.TrimSpace(req.Notes)
+
 	return req, nil
 }
 
@@ -133,28 +135,24 @@ func computeRecordedAt(now, issuedAt time.Time, useIssuedAtAsRecordedAt bool) (t
 	return recordedAt, nil
 }
 
-func buildPreparedEvent(req addEventRequest, docVersion int, docHash string, issuedAt, recordedAt time.Time, eventID string) PreparedEvent {
-	prevEventID := trimmedOptionalString(req.PrevEventID)
+func buildPreparedEvent(req AddEventRequest, docVersion int, docHash string, issuedAt, recordedAt time.Time, eventID string) PreparedEvent {
 	canonicalPayloadHash := canonicalPayloadHash(req.PayloadHash != nil, docHash)
 
 	return PreparedEvent{
 		Schema:        req.Schema,
 		EventID:       eventID,
-		EventType:     normalizedEventType(req.EventType),
-		DocUID:        strings.TrimSpace(req.DocUID),
+		EventType:     req.EventType,
+		DocUID:        req.DocUID,
 		DocVersion:    docVersion,
-		PrevEventID:   prevEventID,
+		PrevEventID:   req.PrevEventID,
 		PrevEventLeaf: req.PrevEventLeaf,
 		PayloadHash:   canonicalPayloadHash,
-		Issuer: Issuer{
-			EntityID: strings.TrimSpace(req.Issuer.EntityID),
-			Name:     strings.TrimSpace(req.Issuer.Name),
-		},
-		IssuedAt:    issuedAt.Format(time.RFC3339Nano),
-		RecordedAt:  recordedAt.Format(time.RFC3339Nano),
-		Title:       strings.TrimSpace(req.Title),
-		Description: strings.TrimSpace(req.Description),
-		Notes:       strings.TrimSpace(req.Notes),
+		Issuer:        req.Issuer,
+		IssuedAt:      issuedAt.Format(time.RFC3339Nano),
+		RecordedAt:    recordedAt.Format(time.RFC3339Nano),
+		Title:         req.Title,
+		Description:   req.Description,
+		Notes:         req.Notes,
 	}
 }
 
@@ -210,18 +208,18 @@ func rejectServerManagedFields(raw []byte) error {
 	return nil
 }
 
-func validateAddEventRequest(req addEventRequest) (string, time.Time, error) {
+func validateAddEventRequest(req AddEventRequest) (string, time.Time, error) {
 	if req.Schema != eventSchema {
 		return "", time.Time{}, fmt.Errorf("schema must be %q", eventSchema)
 	}
 
-	if strings.TrimSpace(req.DocUID) == "" {
+	if req.DocUID == "" {
 		return "", time.Time{}, fmt.Errorf("doc_uid is required")
 	}
-	if strings.TrimSpace(req.Issuer.EntityID) == "" {
+	if req.Issuer.EntityID == "" {
 		return "", time.Time{}, fmt.Errorf("issuer.entity_id is required")
 	}
-	if strings.TrimSpace(req.Title) == "" {
+	if req.Title == "" {
 		return "", time.Time{}, fmt.Errorf("title is required")
 	}
 	if req.PrevEventLeaf != nil && *req.PrevEventLeaf < 0 {
@@ -233,10 +231,9 @@ func validateAddEventRequest(req addEventRequest) (string, time.Time, error) {
 		return "", time.Time{}, fmt.Errorf("issued_at invalid: %v", err)
 	}
 
-	et := normalizedEventType(req.EventType)
-	switch et {
+	switch req.EventType {
 	case "CREATE":
-		if req.PrevEventID != nil && strings.TrimSpace(*req.PrevEventID) != "" {
+		if req.PrevEventID != nil && *req.PrevEventID != "" {
 			return "", time.Time{}, fmt.Errorf("CREATE must not include prev_event_id")
 		}
 		if req.PayloadHash == nil {
