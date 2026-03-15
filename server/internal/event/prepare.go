@@ -22,7 +22,6 @@ type addEventRequest struct {
 	Schema        string       `json:"schema"`
 	EventType     string       `json:"event_type"`
 	DocUID        string       `json:"doc_uid"`
-	DocVersion    int          `json:"doc_version"`
 	PrevEventID   *string      `json:"prev_event_id,omitempty"`
 	PrevEventLeaf *int64       `json:"prev_event_leaf,omitempty"`
 	PayloadHash   *PayloadHash `json:"payload_hash,omitempty"`
@@ -67,13 +66,16 @@ func (e PreparedEvent) DocHash() (string, error) {
 	return hashutil.ParsePayloadHashValue(e.PayloadHash.Value)
 }
 
-func PrepareAddEventForNotarization(raw []byte, now time.Time) (PreparedEvent, []byte, error) {
-	return PrepareAddEventForNotarizationWithMode(raw, now, false)
+func PrepareAddEventForNotarization(raw []byte, now time.Time, docVersion int) (PreparedEvent, []byte, error) {
+	return PrepareAddEventForNotarizationWithMode(raw, now, docVersion, false)
 }
 
-func PrepareAddEventForNotarizationWithMode(raw []byte, now time.Time, useIssuedAtAsRecordedAt bool) (PreparedEvent, []byte, error) {
+func PrepareAddEventForNotarizationWithMode(raw []byte, now time.Time, docVersion int, useIssuedAtAsRecordedAt bool) (PreparedEvent, []byte, error) {
 	if len(raw) == 0 {
 		return PreparedEvent{}, nil, fmt.Errorf("empty body")
+	}
+	if docVersion < 1 {
+		return PreparedEvent{}, nil, fmt.Errorf("doc_version must be >= 1")
 	}
 
 	req, err := decodeAddEventRequest(raw)
@@ -92,7 +94,7 @@ func PrepareAddEventForNotarizationWithMode(raw []byte, now time.Time, useIssued
 	}
 
 	eventID := uuid.NewString()
-	prepared := buildPreparedEvent(req, docHash, issuedAt, recordedAt, eventID)
+	prepared := buildPreparedEvent(req, docVersion, docHash, issuedAt, recordedAt, eventID)
 
 	canon, err := canonicalizePreparedEvent(prepared)
 	if err != nil {
@@ -131,7 +133,7 @@ func computeRecordedAt(now, issuedAt time.Time, useIssuedAtAsRecordedAt bool) (t
 	return recordedAt, nil
 }
 
-func buildPreparedEvent(req addEventRequest, docHash string, issuedAt, recordedAt time.Time, eventID string) PreparedEvent {
+func buildPreparedEvent(req addEventRequest, docVersion int, docHash string, issuedAt, recordedAt time.Time, eventID string) PreparedEvent {
 	prevEventID := trimmedOptionalString(req.PrevEventID)
 	canonicalPayloadHash := canonicalPayloadHash(req.PayloadHash != nil, docHash)
 
@@ -140,7 +142,7 @@ func buildPreparedEvent(req addEventRequest, docHash string, issuedAt, recordedA
 		EventID:       eventID,
 		EventType:     normalizedEventType(req.EventType),
 		DocUID:        strings.TrimSpace(req.DocUID),
-		DocVersion:    req.DocVersion,
+		DocVersion:    docVersion,
 		PrevEventID:   prevEventID,
 		PrevEventLeaf: req.PrevEventLeaf,
 		PayloadHash:   canonicalPayloadHash,
@@ -202,6 +204,9 @@ func rejectServerManagedFields(raw []byte) error {
 	if _, exists := m["recorded_at"]; exists {
 		return fmt.Errorf("recorded_at is managed by server and must not be provided")
 	}
+	if _, exists := m["doc_version"]; exists {
+		return fmt.Errorf("doc_version is managed by server and must not be provided")
+	}
 	return nil
 }
 
@@ -212,9 +217,6 @@ func validateAddEventRequest(req addEventRequest) (string, time.Time, error) {
 
 	if strings.TrimSpace(req.DocUID) == "" {
 		return "", time.Time{}, fmt.Errorf("doc_uid is required")
-	}
-	if req.DocVersion < 1 {
-		return "", time.Time{}, fmt.Errorf("doc_version must be >= 1")
 	}
 	if strings.TrimSpace(req.Issuer.EntityID) == "" {
 		return "", time.Time{}, fmt.Errorf("issuer.entity_id is required")
@@ -234,9 +236,6 @@ func validateAddEventRequest(req addEventRequest) (string, time.Time, error) {
 	et := normalizedEventType(req.EventType)
 	switch et {
 	case "CREATE":
-		if req.DocVersion != 1 {
-			return "", time.Time{}, fmt.Errorf("CREATE requires doc_version=1")
-		}
 		if req.PrevEventID != nil && strings.TrimSpace(*req.PrevEventID) != "" {
 			return "", time.Time{}, fmt.Errorf("CREATE must not include prev_event_id")
 		}
@@ -253,9 +252,6 @@ func validateAddEventRequest(req addEventRequest) (string, time.Time, error) {
 		return docHash, issuedAt.UTC(), nil
 
 	case "UPDATE":
-		if req.DocVersion < 2 {
-			return "", time.Time{}, fmt.Errorf("UPDATE requires doc_version>=2")
-		}
 		if err := requireUUIDv4Ptr("prev_event_id", req.PrevEventID); err != nil {
 			return "", time.Time{}, err
 		}

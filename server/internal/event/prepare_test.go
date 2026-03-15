@@ -173,6 +173,11 @@ func TestRejectServerManagedFields(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name:    "doc_version rejected",
+			input:   `{"schema":"pa-notary-event@1","doc_version":2}`,
+			wantErr: true,
+		},
+		{
 			name:    "invalid JSON returns error",
 			input:   `{not valid json`,
 			wantErr: true,

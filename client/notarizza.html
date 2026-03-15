@@ -51,10 +51,6 @@
 
       <div class="row">
         <div class="col">
-          <label for="docVersion">Versione</label>
-          <input id="docVersion" type="number" min="1" value="1" />
-        </div>
-        <div class="col">
           <label for="prevEventId">Previous Event ID</label>
           <input id="prevEventId" placeholder="UUIDv4 (richiesto per UPDATE/REVOKE)" />
         </div>
@@ -83,7 +79,7 @@
       </div>
 
       <p class="muted">
-        <strong>Nota:</strong> Il client invia i campi dominio; il server aggiunge <code>event_id</code> e <code>recorded_at</code>, canonicalizza e notarizza.  Il limite per il payload JSON è di 2KB.
+        <strong>Nota:</strong> Il client invia i campi dominio; il server aggiunge <code>event_id</code>, <code>recorded_at</code> e <code>doc_version</code>, canonicalizza e notarizza. Il limite per il payload JSON è di 2KB.
       </p>
 
       <div id="status"></div>

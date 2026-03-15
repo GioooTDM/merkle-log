@@ -16,7 +16,6 @@ const issuerIdEl = el("issuerId");
 const issuerNameEl = el("issuerName");
 const docUidEl = el("docUid");
 const eventTypeEl = el("eventType");
-const docVersionEl = el("docVersion");
 const prevEventIdEl = el("prevEventId");
 const titleEl = el("title");
 const descriptionEl = el("description");
@@ -56,7 +55,6 @@ function getFormData() {
     issuerName: issuerNameEl.value.trim(),
     docUid: docUidEl.value.trim(),
     eventType: eventTypeEl.value,
-    docVersion: Number(docVersionEl.value),
     prevEventId: prevEventIdEl.value.trim(),
     title: titleEl.value.trim(),
     description: descriptionEl.value.trim(),
@@ -115,19 +113,6 @@ function buildEventObject(data, payloadHex) {
   requireNonEmpty("doc_uid", data.docUid);
   requireNonEmpty("title", data.title);
 
-  if (!Number.isFinite(data.docVersion)) {
-    throw new Error("doc_version non finito non ammesso");
-  }
-  if (!Number.isInteger(data.docVersion)) {
-    throw new Error("doc_version deve essere un intero");
-  }
-  if (!Number.isSafeInteger(data.docVersion)) {
-    throw new Error("doc_version fuori range JS (non safe integer)");
-  }
-  if (data.docVersion < 1) {
-    throw new Error("doc_version deve essere un intero >= 1");
-  }
-
   const needsPrev = data.eventType === "UPDATE" || data.eventType === "REVOKE" || data.eventType === "EXPIRE";
 
   if (needsPrev) {
@@ -144,18 +129,10 @@ function buildEventObject(data, payloadHex) {
     throw new Error("payload_hash sha-256 hex non valido");
   }
 
-  if (data.eventType === "CREATE" && data.docVersion !== 1) {
-    throw new Error("CREATE richiede doc_version=1");
-  }
-  if (data.eventType === "UPDATE" && data.docVersion < 2) {
-    throw new Error("UPDATE richiede doc_version>=2");
-  }
-
   return {
     schema: "pa-notary-event@1",
     event_type: data.eventType,
     doc_uid: data.docUid,
-    doc_version: data.docVersion,
     ...(needsPrev ? { prev_event_id: data.prevEventId } : {}),
     ...(payloadHash ? { payload_hash: payloadHash } : {}),
     issuer: {
@@ -281,7 +258,6 @@ document.getElementById("btnMock").addEventListener("click", () => {
   docUidEl.value = `${tipo.toUpperCase()}/${anno}/${num}`;
 
   eventTypeEl.value = "CREATE";
-  docVersionEl.value = 1;
   prevEventIdEl.value = "";
 
   titleEl.value = `${tipo} dirigenziale n. ${num}`;
