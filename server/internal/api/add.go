@@ -28,7 +28,7 @@ func (h *NotaryHandler) AddEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	parsed, canonicalBody, err := event.PrepareAddEventForNotarizationWithMode(body, time.Now().UTC(), h.useIssuedAtAsRecordedAt)
+	prepared, canonicalBody, err := event.PrepareAddEventForNotarizationWithMode(body, time.Now().UTC(), h.useIssuedAtAsRecordedAt)
 	if err != nil {
 		http.Error(w, "Invalid add payload: "+err.Error(), http.StatusBadRequest)
 		return
@@ -36,8 +36,15 @@ func (h *NotaryHandler) AddEvent(w http.ResponseWriter, r *http.Request) {
 
 	// TODO: questo controllo non è atomico con append+indexing. Due POST /add quasi simultanee
 	// sullo stesso doc_uid possono ancora leggere la stessa head e creare un fork.
-	if err := h.validateLatestDocumentChain(r.Context(), parsed); err != nil {
+	if err := h.validateLatestDocumentChain(r.Context(), prepared); err != nil {
 		http.Error(w, "Invalid document chain: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	docHash, err := prepared.DocHash()
+	if err != nil {
+		log.Printf("prepare/index metadata mismatch for event_id=%s doc_uid=%s: %v", prepared.EventID, prepared.DocUID, err)
+		http.Error(w, "Internal error preparing index metadata", http.StatusInternalServerError)
 		return
 	}
 
@@ -55,14 +62,14 @@ func (h *NotaryHandler) AddEvent(w http.ResponseWriter, r *http.Request) {
 	// 3. Indicizzazione asincrona (opzionale) o sincrona
 	if err := h.indexer.AddEntry(index.Entry{
 		LogIndex:       idx.Index,
-		DocUID:         parsed.DocUID,
-		EventID:        parsed.EventID,
-		DocHash:        parsed.DocHash,
+		DocUID:         prepared.DocUID,
+		EventID:        prepared.EventID,
+		DocHash:        docHash,
 		LeafHash:       leafHash,
-		IssuerEntityID: parsed.IssuerEntityID,
-		RecordedAt:     parsed.RecordedAt,
+		IssuerEntityID: prepared.Issuer.EntityID,
+		RecordedAt:     prepared.RecordedAt,
 	}); err != nil {
-		log.Printf("indexing error for event_id=%s doc_uid=%s index=%d: %v", parsed.EventID, parsed.DocUID, idx.Index, err)
+		log.Printf("indexing error for event_id=%s doc_uid=%s index=%d: %v", prepared.EventID, prepared.DocUID, idx.Index, err)
 		// Non blocchiamo la risposta se il log è ok ma l'indice fallisce,
 		// ma in produzione andrebbe gestito meglio
 	}
@@ -79,49 +86,49 @@ type chainHeadEntry struct {
 	DocVersion int    `json:"doc_version"`
 }
 
-func (h *NotaryHandler) validateLatestDocumentChain(ctx context.Context, parsed event.PreparedAddEvent) error {
-	if parsed.EventType != "CREATE" && parsed.EventType != "UPDATE" {
+func (h *NotaryHandler) validateLatestDocumentChain(ctx context.Context, prepared event.PreparedEvent) error {
+	if prepared.EventType != "CREATE" && prepared.EventType != "UPDATE" {
 		return nil
 	}
 
-	latestIndex, found, err := h.indexer.GetLatestIndexByDocUID(parsed.DocUID)
+	latestIndex, found, err := h.indexer.GetLatestIndexByDocUID(prepared.DocUID)
 	if err != nil {
-		return fmt.Errorf("lookup latest entry for doc_uid %q: %w", parsed.DocUID, err)
+		return fmt.Errorf("lookup latest entry for doc_uid %q: %w", prepared.DocUID, err)
 	}
 
 	if !found {
-		if parsed.EventType == "CREATE" {
+		if prepared.EventType == "CREATE" {
 			return nil
 		}
-		return fmt.Errorf("doc_uid %q has no existing chain", parsed.DocUID)
+		return fmt.Errorf("doc_uid %q has no existing chain", prepared.DocUID)
 	}
 
-	if parsed.EventType == "CREATE" {
-		return fmt.Errorf("doc_uid %q already exists", parsed.DocUID)
+	if prepared.EventType == "CREATE" {
+		return fmt.Errorf("doc_uid %q already exists", prepared.DocUID)
 	}
 
 	raw, err := h.readEntryByIndex(ctx, latestIndex)
 	if err != nil {
-		return fmt.Errorf("read latest entry for doc_uid %q: %w", parsed.DocUID, err)
+		return fmt.Errorf("read latest entry for doc_uid %q: %w", prepared.DocUID, err)
 	}
 
 	var head chainHeadEntry
 	if err := json.Unmarshal(raw, &head); err != nil {
-		return fmt.Errorf("decode latest entry for doc_uid %q: %w", parsed.DocUID, err)
+		return fmt.Errorf("decode latest entry for doc_uid %q: %w", prepared.DocUID, err)
 	}
 
-	if strings.TrimSpace(head.DocUID) != parsed.DocUID {
-		return fmt.Errorf("doc_uid %q latest entry mismatch", parsed.DocUID)
+	if strings.TrimSpace(head.DocUID) != prepared.DocUID {
+		return fmt.Errorf("doc_uid %q latest entry mismatch", prepared.DocUID)
 	}
-	if parsed.PrevEventID == nil {
-		return fmt.Errorf("%s requires prev_event_id", parsed.EventType)
+	if prepared.PrevEventID == nil {
+		return fmt.Errorf("%s requires prev_event_id", prepared.EventType)
 	}
-	if strings.TrimSpace(*parsed.PrevEventID) != strings.TrimSpace(head.EventID) {
-		return fmt.Errorf("prev_event_id must match latest event_id for doc_uid %q", parsed.DocUID)
+	if strings.TrimSpace(*prepared.PrevEventID) != strings.TrimSpace(head.EventID) {
+		return fmt.Errorf("prev_event_id must match latest event_id for doc_uid %q", prepared.DocUID)
 	}
 	// TODO: forse DocVersion è un campo che può essere gestito dal server.
-	if parsed.DocVersion != head.DocVersion+1 {
-		return fmt.Errorf("doc_version must be %d for doc_uid %q", head.DocVersion+1, parsed.DocUID)
+	if prepared.DocVersion != head.DocVersion+1 {
+		return fmt.Errorf("doc_version must be %d for doc_uid %q", head.DocVersion+1, prepared.DocUID)
 	}
 
 	return nil

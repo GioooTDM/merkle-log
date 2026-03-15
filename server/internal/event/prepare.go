@@ -18,149 +18,177 @@ import (
 
 const eventSchema = "pa-notary-event@1"
 
-type PreparedAddEvent struct {
-	DocUID         string
-	EventID        string
-	EventType      string
-	DocVersion     int
-	PrevEventID    *string
-	DocHash        string
-	IssuerEntityID string
-	RecordedAt     string
+type addEventRequest struct {
+	Schema        string       `json:"schema"`
+	EventType     string       `json:"event_type"`
+	DocUID        string       `json:"doc_uid"`
+	DocVersion    int          `json:"doc_version"`
+	PrevEventID   *string      `json:"prev_event_id,omitempty"`
+	PrevEventLeaf *int64       `json:"prev_event_leaf,omitempty"`
+	PayloadHash   *PayloadHash `json:"payload_hash,omitempty"`
+	Issuer        Issuer       `json:"issuer"`
+	IssuedAt      string       `json:"issued_at"`
+	Title         string       `json:"title"`
+	Description   string       `json:"description,omitempty"`
+	Notes         string       `json:"notes,omitempty"`
 }
 
-type addEventClientPayload struct {
-	Schema        string               `json:"schema"`
-	EventType     string               `json:"event_type"`
-	DocUID        string               `json:"doc_uid"`
-	DocVersion    int                  `json:"doc_version"`
-	PrevEventID   *string              `json:"prev_event_id,omitempty"`
-	PrevEventLeaf *int64               `json:"prev_event_leaf,omitempty"`
-	PayloadHash   *addEventPayloadHash `json:"payload_hash,omitempty"`
-	Issuer        addEventIssuer       `json:"issuer"`
-	IssuedAt      string               `json:"issued_at"`
-	Title         string               `json:"title"`
-	Description   string               `json:"description,omitempty"`
-	Notes         string               `json:"notes,omitempty"`
+type PreparedEvent struct {
+	Schema        string       `json:"schema"`
+	EventID       string       `json:"event_id"`
+	EventType     string       `json:"event_type"`
+	DocUID        string       `json:"doc_uid"`
+	DocVersion    int          `json:"doc_version"`
+	PrevEventID   *string      `json:"prev_event_id,omitempty"`
+	PrevEventLeaf *int64       `json:"prev_event_leaf,omitempty"`
+	PayloadHash   *PayloadHash `json:"payload_hash,omitempty"`
+	Issuer        Issuer       `json:"issuer"`
+	IssuedAt      string       `json:"issued_at"`
+	RecordedAt    string       `json:"recorded_at"`
+	Title         string       `json:"title"`
+	Description   string       `json:"description,omitempty"`
+	Notes         string       `json:"notes,omitempty"`
 }
 
-type addEventPayload struct {
-	Schema        string               `json:"schema"`
-	EventID       string               `json:"event_id"`
-	EventType     string               `json:"event_type"`
-	DocUID        string               `json:"doc_uid"`
-	DocVersion    int                  `json:"doc_version"`
-	PrevEventID   *string              `json:"prev_event_id,omitempty"`
-	PrevEventLeaf *int64               `json:"prev_event_leaf,omitempty"`
-	PayloadHash   *addEventPayloadHash `json:"payload_hash,omitempty"`
-	Issuer        addEventIssuer       `json:"issuer"`
-	IssuedAt      string               `json:"issued_at"`
-	RecordedAt    string               `json:"recorded_at"`
-	Title         string               `json:"title"`
-	Description   string               `json:"description,omitempty"`
-	Notes         string               `json:"notes,omitempty"`
-}
-
-type addEventPayloadHash struct {
+type PayloadHash struct {
 	Alg   string `json:"alg"`
 	Value string `json:"value"`
 }
 
-type addEventIssuer struct {
+type Issuer struct {
 	EntityID string `json:"entity_id"`
 	Name     string `json:"name,omitempty"`
 }
 
-func PrepareAddEventForNotarization(raw []byte, now time.Time) (PreparedAddEvent, []byte, error) {
+func (e PreparedEvent) DocHash() (string, error) {
+	if e.PayloadHash == nil {
+		return "", nil
+	}
+	return hashutil.ParsePayloadHashValue(e.PayloadHash.Value)
+}
+
+func PrepareAddEventForNotarization(raw []byte, now time.Time) (PreparedEvent, []byte, error) {
 	return PrepareAddEventForNotarizationWithMode(raw, now, false)
 }
 
-func PrepareAddEventForNotarizationWithMode(raw []byte, now time.Time, useIssuedAtAsRecordedAt bool) (PreparedAddEvent, []byte, error) {
+func PrepareAddEventForNotarizationWithMode(raw []byte, now time.Time, useIssuedAtAsRecordedAt bool) (PreparedEvent, []byte, error) {
 	if len(raw) == 0 {
-		return PreparedAddEvent{}, nil, fmt.Errorf("empty body")
+		return PreparedEvent{}, nil, fmt.Errorf("empty body")
 	}
 
-	if err := rejectServerManagedFields(raw); err != nil {
-		return PreparedAddEvent{}, nil, err
-	}
-
-	var ev addEventClientPayload
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&ev); err != nil {
-		return PreparedAddEvent{}, nil, fmt.Errorf("invalid JSON structure: %w", err)
-	}
-	var trailing any
-	if err := dec.Decode(&trailing); err != nil && !errors.Is(err, io.EOF) {
-		return PreparedAddEvent{}, nil, fmt.Errorf("invalid trailing data in JSON body")
-	}
-
-	docHash, issuedAt, err := validateClientEventSemantics(ev)
+	req, err := decodeAddEventRequest(raw)
 	if err != nil {
-		return PreparedAddEvent{}, nil, err
+		return PreparedEvent{}, nil, err
 	}
 
-	recordedAt := now.UTC()
-	if useIssuedAtAsRecordedAt {
-		recordedAt = issuedAt.UTC()
-	} else if recordedAt.Before(issuedAt) { // TODO: gli orologi potrebbero non essere sincronizzati, valutare se accettare un margine di tolleranza (es. 5 secondi)
-		return PreparedAddEvent{}, nil, fmt.Errorf("issued_at cannot be in the future")
+	docHash, issuedAt, err := validateAddEventRequest(req)
+	if err != nil {
+		return PreparedEvent{}, nil, err
+	}
+
+	recordedAt, err := computeRecordedAt(now, issuedAt, useIssuedAtAsRecordedAt)
+	if err != nil {
+		return PreparedEvent{}, nil, err
 	}
 
 	eventID := uuid.NewString()
-	var prevEventID *string
-	if ev.PrevEventID != nil {
-		trimmedPrev := strings.TrimSpace(*ev.PrevEventID)
-		prevEventID = &trimmedPrev
-	}
-	var payloadHash *addEventPayloadHash
-	if ev.PayloadHash != nil {
-		payloadHash = &addEventPayloadHash{
-			Alg:   "sha-256",
-			Value: "hex:" + docHash,
-		}
+	prepared := buildPreparedEvent(req, docHash, issuedAt, recordedAt, eventID)
+
+	canon, err := canonicalizePreparedEvent(prepared)
+	if err != nil {
+		return PreparedEvent{}, nil, err
 	}
 
-	stored := addEventPayload{
-		Schema:        ev.Schema,
+	return prepared, canon, nil
+}
+
+func decodeAddEventRequest(raw []byte) (addEventRequest, error) {
+	if err := rejectServerManagedFields(raw); err != nil {
+		return addEventRequest{}, err
+	}
+
+	var req addEventRequest
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		return addEventRequest{}, fmt.Errorf("invalid JSON structure: %w", err)
+	}
+	var trailing any
+	if err := dec.Decode(&trailing); err != nil && !errors.Is(err, io.EOF) {
+		return addEventRequest{}, fmt.Errorf("invalid trailing data in JSON body")
+	}
+	return req, nil
+}
+
+func computeRecordedAt(now, issuedAt time.Time, useIssuedAtAsRecordedAt bool) (time.Time, error) {
+	recordedAt := now.UTC()
+	if useIssuedAtAsRecordedAt {
+		return issuedAt.UTC(), nil
+	}
+	if recordedAt.Before(issuedAt) { // TODO: gli orologi potrebbero non essere sincronizzati, valutare se accettare un margine di tolleranza (es. 5 secondi)
+		return time.Time{}, fmt.Errorf("issued_at cannot be in the future")
+	}
+	return recordedAt, nil
+}
+
+func buildPreparedEvent(req addEventRequest, docHash string, issuedAt, recordedAt time.Time, eventID string) PreparedEvent {
+	prevEventID := trimmedOptionalString(req.PrevEventID)
+	canonicalPayloadHash := canonicalPayloadHash(req.PayloadHash != nil, docHash)
+
+	return PreparedEvent{
+		Schema:        req.Schema,
 		EventID:       eventID,
-		EventType:     strings.ToUpper(strings.TrimSpace(ev.EventType)),
-		DocUID:        strings.TrimSpace(ev.DocUID),
-		DocVersion:    ev.DocVersion,
+		EventType:     normalizedEventType(req.EventType),
+		DocUID:        strings.TrimSpace(req.DocUID),
+		DocVersion:    req.DocVersion,
 		PrevEventID:   prevEventID,
-		PrevEventLeaf: ev.PrevEventLeaf,
-		PayloadHash:   payloadHash,
-		Issuer: addEventIssuer{
-			EntityID: strings.TrimSpace(ev.Issuer.EntityID),
-			Name:     strings.TrimSpace(ev.Issuer.Name),
+		PrevEventLeaf: req.PrevEventLeaf,
+		PayloadHash:   canonicalPayloadHash,
+		Issuer: Issuer{
+			EntityID: strings.TrimSpace(req.Issuer.EntityID),
+			Name:     strings.TrimSpace(req.Issuer.Name),
 		},
 		IssuedAt:    issuedAt.Format(time.RFC3339Nano),
 		RecordedAt:  recordedAt.Format(time.RFC3339Nano),
-		Title:       strings.TrimSpace(ev.Title),
-		Description: strings.TrimSpace(ev.Description),
-		Notes:       strings.TrimSpace(ev.Notes),
+		Title:       strings.TrimSpace(req.Title),
+		Description: strings.TrimSpace(req.Description),
+		Notes:       strings.TrimSpace(req.Notes),
 	}
+}
 
-	storedRaw, err := json.Marshal(stored)
+func canonicalizePreparedEvent(prepared PreparedEvent) ([]byte, error) {
+	preparedRaw, err := json.Marshal(prepared)
 	if err != nil {
-		return PreparedAddEvent{}, nil, fmt.Errorf("failed to serialize event: %w", err)
+		return nil, fmt.Errorf("failed to serialize event: %w", err)
 	}
 
-	canon, err := jsoncanonicalizer.Transform(storedRaw)
+	canon, err := jsoncanonicalizer.Transform(preparedRaw)
 	if err != nil {
-		return PreparedAddEvent{}, nil, fmt.Errorf("failed to canonicalize event JSON: %w", err)
+		return nil, fmt.Errorf("failed to canonicalize event JSON: %w", err)
 	}
+	return canon, nil
+}
 
-	return PreparedAddEvent{
-		DocUID:         stored.DocUID,
-		EventID:        eventID,
-		EventType:      stored.EventType,
-		DocVersion:     stored.DocVersion,
-		PrevEventID:    prevEventID,
-		DocHash:        docHash,
-		IssuerEntityID: stored.Issuer.EntityID,
-		RecordedAt:     stored.RecordedAt,
-	}, canon, nil
+func trimmedOptionalString(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(*value)
+	return &trimmed
+}
+
+func canonicalPayloadHash(hasPayloadHash bool, docHash string) *PayloadHash {
+	if !hasPayloadHash {
+		return nil
+	}
+	return &PayloadHash{
+		Alg:   "sha-256",
+		Value: "hex:" + docHash,
+	}
+}
+
+func normalizedEventType(eventType string) string {
+	return strings.ToUpper(strings.TrimSpace(eventType))
 }
 
 func rejectServerManagedFields(raw []byte) error {
@@ -177,81 +205,81 @@ func rejectServerManagedFields(raw []byte) error {
 	return nil
 }
 
-func validateClientEventSemantics(ev addEventClientPayload) (string, time.Time, error) {
-	if ev.Schema != eventSchema {
+func validateAddEventRequest(req addEventRequest) (string, time.Time, error) {
+	if req.Schema != eventSchema {
 		return "", time.Time{}, fmt.Errorf("schema must be %q", eventSchema)
 	}
 
-	if strings.TrimSpace(ev.DocUID) == "" {
+	if strings.TrimSpace(req.DocUID) == "" {
 		return "", time.Time{}, fmt.Errorf("doc_uid is required")
 	}
-	if ev.DocVersion < 1 {
+	if req.DocVersion < 1 {
 		return "", time.Time{}, fmt.Errorf("doc_version must be >= 1")
 	}
-	if strings.TrimSpace(ev.Issuer.EntityID) == "" {
+	if strings.TrimSpace(req.Issuer.EntityID) == "" {
 		return "", time.Time{}, fmt.Errorf("issuer.entity_id is required")
 	}
-	if strings.TrimSpace(ev.Title) == "" {
+	if strings.TrimSpace(req.Title) == "" {
 		return "", time.Time{}, fmt.Errorf("title is required")
 	}
-	if ev.PrevEventLeaf != nil && *ev.PrevEventLeaf < 0 {
+	if req.PrevEventLeaf != nil && *req.PrevEventLeaf < 0 {
 		return "", time.Time{}, fmt.Errorf("prev_event_leaf must be >= 0")
 	}
 
-	issuedAt, err := parseRFC3339orNano(ev.IssuedAt)
+	issuedAt, err := parseRFC3339orNano(req.IssuedAt)
 	if err != nil {
 		return "", time.Time{}, fmt.Errorf("issued_at invalid: %v", err)
 	}
 
-	et := strings.ToUpper(strings.TrimSpace(ev.EventType))
+	et := normalizedEventType(req.EventType)
 	switch et {
 	case "CREATE":
-		if ev.DocVersion != 1 {
+		if req.DocVersion != 1 {
 			return "", time.Time{}, fmt.Errorf("CREATE requires doc_version=1")
 		}
-		if ev.PrevEventID != nil && strings.TrimSpace(*ev.PrevEventID) != "" {
+		if req.PrevEventID != nil && strings.TrimSpace(*req.PrevEventID) != "" {
 			return "", time.Time{}, fmt.Errorf("CREATE must not include prev_event_id")
 		}
-		if ev.PayloadHash == nil {
+		if req.PayloadHash == nil {
 			return "", time.Time{}, fmt.Errorf("payload_hash is required for CREATE")
 		}
-		if err := validatePayloadHash(*ev.PayloadHash); err != nil {
+		if err := validatePayloadHash(*req.PayloadHash); err != nil {
 			return "", time.Time{}, err
 		}
-		docHash, err := hashutil.ParsePayloadHashValue(ev.PayloadHash.Value)
+		docHash, err := hashutil.ParsePayloadHashValue(req.PayloadHash.Value)
 		if err != nil {
 			return "", time.Time{}, err
 		}
 		return docHash, issuedAt.UTC(), nil
 
 	case "UPDATE":
-		if ev.DocVersion < 2 {
+		if req.DocVersion < 2 {
 			return "", time.Time{}, fmt.Errorf("UPDATE requires doc_version>=2")
 		}
-		if err := requireUUIDv4Ptr("prev_event_id", ev.PrevEventID); err != nil {
+		if err := requireUUIDv4Ptr("prev_event_id", req.PrevEventID); err != nil {
 			return "", time.Time{}, err
 		}
-		if ev.PayloadHash == nil {
+		if req.PayloadHash == nil {
 			return "", time.Time{}, fmt.Errorf("payload_hash is required for UPDATE")
 		}
-		if err := validatePayloadHash(*ev.PayloadHash); err != nil {
+		if err := validatePayloadHash(*req.PayloadHash); err != nil {
 			return "", time.Time{}, err
 		}
-		docHash, err := hashutil.ParsePayloadHashValue(ev.PayloadHash.Value)
+		docHash, err := hashutil.ParsePayloadHashValue(req.PayloadHash.Value)
 		if err != nil {
 			return "", time.Time{}, err
 		}
 		return docHash, issuedAt.UTC(), nil
 
 	case "REVOKE", "EXPIRE":
-		if err := requireUUIDv4Ptr("prev_event_id", ev.PrevEventID); err != nil {
+		if err := requireUUIDv4Ptr("prev_event_id", req.PrevEventID); err != nil {
 			return "", time.Time{}, err
 		}
-		if ev.PayloadHash != nil {
-			if err := validatePayloadHash(*ev.PayloadHash); err != nil {
+		if req.PayloadHash != nil {
+			if err := validatePayloadHash(*req.PayloadHash); err != nil {
 				return "", time.Time{}, err
 			}
-			docHash, err := hashutil.ParsePayloadHashValue(ev.PayloadHash.Value)
+			docHash, err := hashutil.ParsePayloadHashValue(req.PayloadHash.Value)
 			if err != nil {
 				return "", time.Time{}, err
 			}
@@ -260,11 +288,11 @@ func validateClientEventSemantics(ev addEventClientPayload) (string, time.Time, 
 		return "", issuedAt.UTC(), nil
 
 	default:
-		return "", time.Time{}, fmt.Errorf("event_type invalid (got %q)", ev.EventType)
+		return "", time.Time{}, fmt.Errorf("event_type invalid (got %q)", req.EventType)
 	}
 }
 
-func validatePayloadHash(ph addEventPayloadHash) error {
+func validatePayloadHash(ph PayloadHash) error {
 	alg := strings.TrimSpace(ph.Alg)
 	if alg == "" {
 		return fmt.Errorf("payload_hash.alg is required")

@@ -108,32 +108,32 @@ func TestValidatePayloadHash(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		ph      addEventPayloadHash
+		ph      PayloadHash
 		wantErr bool
 	}{
 		{
 			name:    "valid sha-256",
-			ph:      addEventPayloadHash{Alg: "sha-256", Value: validValue},
+			ph:      PayloadHash{Alg: "sha-256", Value: validValue},
 			wantErr: false,
 		},
 		{
 			name:    "alg case insensitive trimmed",
-			ph:      addEventPayloadHash{Alg: "  sha-256  ", Value: validValue},
+			ph:      PayloadHash{Alg: "  sha-256  ", Value: validValue},
 			wantErr: false,
 		},
 		{
 			name:    "missing alg",
-			ph:      addEventPayloadHash{Alg: "", Value: validValue},
+			ph:      PayloadHash{Alg: "", Value: validValue},
 			wantErr: true,
 		},
 		{
 			name:    "wrong alg",
-			ph:      addEventPayloadHash{Alg: "sha-1", Value: validValue},
+			ph:      PayloadHash{Alg: "sha-1", Value: validValue},
 			wantErr: true,
 		},
 		{
 			name:    "invalid value",
-			ph:      addEventPayloadHash{Alg: "sha-256", Value: "hex:tooshort"},
+			ph:      PayloadHash{Alg: "sha-256", Value: "hex:tooshort"},
 			wantErr: true,
 		},
 	}
