@@ -124,6 +124,19 @@ func DecodeAddEventRequest(raw []byte) (AddEventRequest, error) {
 	return req, nil
 }
 
+func DecodePreparedEvent(raw []byte) (PreparedEvent, error) {
+	if len(raw) == 0 {
+		return PreparedEvent{}, fmt.Errorf("empty body")
+	}
+
+	var prepared PreparedEvent
+	if err := json.Unmarshal(raw, &prepared); err != nil {
+		return PreparedEvent{}, fmt.Errorf("invalid prepared event JSON: %w", err)
+	}
+
+	return prepared, nil
+}
+
 func computeRecordedAt(now, issuedAt time.Time, useIssuedAtAsRecordedAt bool) (time.Time, error) {
 	recordedAt := now.UTC()
 	if useIssuedAtAsRecordedAt {

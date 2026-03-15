@@ -294,6 +294,40 @@ func TestDecodeAddEventRequest(t *testing.T) {
 	}
 }
 
+func TestDecodePreparedEvent(t *testing.T) {
+	raw := mustJSON(t, map[string]any{
+		"schema":      "pa-notary-event@1",
+		"event_id":    "550e8400-e29b-41d4-a716-446655440000",
+		"event_type":  "CREATE",
+		"doc_uid":     "DOC/1",
+		"doc_version": 1,
+		"payload_hash": map[string]any{
+			"alg":   "sha-256",
+			"value": "hex:aabbccdd00112233445566778899aabbccddeeff00112233445566778899aabb",
+		},
+		"issuer": map[string]any{
+			"entity_id": "IPA:TEST",
+		},
+		"issued_at":   "2026-01-01T10:00:00Z",
+		"recorded_at": "2026-01-01T10:00:01Z",
+		"title":       "Titolo",
+	})
+
+	got, err := DecodePreparedEvent(raw)
+	if err != nil {
+		t.Fatalf("DecodePreparedEvent() error = %v", err)
+	}
+	if got.EventID != "550e8400-e29b-41d4-a716-446655440000" {
+		t.Fatalf("EventID = %q, want expected UUID", got.EventID)
+	}
+	if got.DocVersion != 1 {
+		t.Fatalf("DocVersion = %d, want 1", got.DocVersion)
+	}
+	if got.DocUID != "DOC/1" {
+		t.Fatalf("DocUID = %q, want DOC/1", got.DocUID)
+	}
+}
+
 func mustJSON(t *testing.T, v any) []byte {
 	t.Helper()
 	raw, err := json.Marshal(v)

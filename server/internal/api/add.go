@@ -57,7 +57,6 @@ func (h *NotaryHandler) AddEvent(w http.ResponseWriter, r *http.Request) {
 
 	leafHash := hashBytes(canonicalBody)
 
-	// TODO: queste operazioni sono bloccanti per il server? Può gestire più richieste parallelamente?
 	// 2. Append al Merkle Log (operazione asincrona che restituisce un future)
 	future := h.appender.Add(r.Context(), tessera.NewEntry(canonicalBody))
 	idx, err := future() // Chiamiamo il future per attendere l'effettivo inserimento e ottenere l'indice
@@ -85,12 +84,6 @@ func (h *NotaryHandler) AddEvent(w http.ResponseWriter, r *http.Request) {
 		"log_index":      idx.Index,
 		"notarized_json": json.RawMessage(canonicalBody),
 	})
-}
-
-type chainHeadEntry struct {
-	EventID    string `json:"event_id"`
-	DocUID     string `json:"doc_uid"`
-	DocVersion int    `json:"doc_version"`
 }
 
 func (h *NotaryHandler) resolveDocumentVersion(ctx context.Context, req event.AddEventRequest) (int, error) {
@@ -123,8 +116,8 @@ func (h *NotaryHandler) resolveDocumentVersion(ctx context.Context, req event.Ad
 			return 0, fmt.Errorf("read latest entry for doc_uid %q: %w", req.DocUID, err)
 		}
 
-		var head chainHeadEntry
-		if err := json.Unmarshal(raw, &head); err != nil {
+		head, err := event.DecodePreparedEvent(raw)
+		if err != nil {
 			return 0, fmt.Errorf("decode latest entry for doc_uid %q: %w", req.DocUID, err)
 		}
 
