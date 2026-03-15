@@ -27,7 +27,7 @@ var (
 	timeout     = flag.Duration("timeout", 10*time.Second, "Timeout per singola richiesta")
 	issuerID    = flag.String("issuer-id", "IPA:HAMMER", "issuer.entity_id")
 	issuerName  = flag.String("issuer-name", "Load Test", "issuer.name")
-	docPrefix   = flag.String("doc-prefix", "HAMMER/2026", "Prefisso doc_uid")
+	docPrefix   = flag.String("doc-prefix", "HAMMER", "Prefisso base doc_uid")
 	errLimit    = flag.Int("error-print-limit", 10, "Max errori stampati")
 )
 
@@ -45,7 +45,6 @@ type addRequest struct {
 	Schema      string      `json:"schema"`
 	EventType   string      `json:"event_type"`
 	DocUID      string      `json:"doc_uid"`
-	DocVersion  int         `json:"doc_version"`
 	PayloadHash payloadHash `json:"payload_hash"`
 	Issuer      issuer      `json:"issuer"`
 	IssuedAt    string      `json:"issued_at"`
@@ -74,6 +73,8 @@ func main() {
 		panic("concurrency must be > 0")
 	}
 
+	runPrefix := mustMakeRunPrefix(*docPrefix)
+
 	client := &http.Client{
 		Transport: &http.Transport{
 			MaxIdleConns:        *concurrency * 2,
@@ -95,7 +96,7 @@ func main() {
 		go func() {
 			defer wg.Done()
 			for i := range jobs {
-				payload := makePayload(i, *docPrefix, *issuerID, *issuerName)
+				payload := makePayload(i, runPrefix, *issuerID, *issuerName)
 				results <- doOne(client, *url, *timeout, payload)
 			}
 		}()
@@ -129,7 +130,7 @@ func main() {
 	elapsed := time.Since(start)
 
 	// Stampa Report
-	printReport(elapsed, success, errs, latencies)
+	printReport(runPrefix, elapsed, success, errs, latencies)
 }
 
 func doOne(client *http.Client, url string, timeout time.Duration, payload addRequest) result {
@@ -175,12 +176,11 @@ func doOne(client *http.Client, url string, timeout time.Duration, payload addRe
 	return result{Latency: lat}
 }
 
-func makePayload(i int, docPrefix, issuerID, issuerName string) addRequest {
+func makePayload(i int, runPrefix, issuerID, issuerName string) addRequest {
 	return addRequest{
-		Schema:     "pa-notary-event@1",
-		EventType:  "CREATE",
-		DocUID:     fmt.Sprintf("%s/%08d", docPrefix, i+1),
-		DocVersion: 1,
+		Schema:    "pa-notary-event@1",
+		EventType: "CREATE",
+		DocUID:    fmt.Sprintf("%s/%08d", runPrefix, i+1),
 		PayloadHash: payloadHash{
 			Alg:   "sha-256",
 			Value: "hex:" + randomSHA256Hex(),
@@ -204,9 +204,36 @@ func randomSHA256Hex() string {
 	return hex.EncodeToString(h[:])
 }
 
-func printReport(elapsed time.Duration, success, errs int, latencies []time.Duration) {
+func mustMakeRunPrefix(base string) string {
+	base = strings.TrimSpace(strings.TrimSuffix(base, "/"))
+	if base == "" {
+		panic("doc-prefix must not be empty")
+	}
+	return fmt.Sprintf("%s/%s", base, randomAlphaNum(4))
+}
+
+func randomAlphaNum(n int) string {
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+	if n <= 0 {
+		return ""
+	}
+
+	buf := make([]byte, n)
+	raw := make([]byte, n)
+	if _, err := rand.Read(raw); err != nil {
+		panic(err)
+	}
+	for i, b := range raw {
+		buf[i] = alphabet[int(b)%len(alphabet)]
+	}
+	return string(buf)
+}
+
+func printReport(runPrefix string, elapsed time.Duration, success, errs int, latencies []time.Duration) {
 	fmt.Println("\n=== HAMMER REPORT ===")
 	fmt.Printf("URL: %s\n", *url)
+	fmt.Printf("Run prefix: %s\n", runPrefix)
 	fmt.Printf("Requests: %d\n", *requests)
 	fmt.Printf("Concurrency: %d\n", *concurrency)
 	fmt.Printf("Elapsed: %s\n", elapsed)

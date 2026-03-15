@@ -21,6 +21,7 @@ go run ./hammer -url http://localhost:2025/add -requests 20000 -concurrency 200 
 - `-concurrency`: numero di worker concorrenti
 - `-timeout`: timeout per singola richiesta
 - `-issuer-id`, `-issuer-name`, `-doc-prefix`: metadati usati nei payload generati
+  - il tool aggiunge automaticamente un segmento alfanumerico casuale dopo `doc-prefix`, per esempio `HAMMER/A2C3/00000001`
 - `-error-print-limit`: quanti errori stampare a video
 
 ## Output report

@@ -4,6 +4,7 @@ package main
 import (
 	"bytes"
 	"context"
+	cryptorand "crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -14,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/go-pdf/fpdf"
@@ -50,7 +52,6 @@ type AddEventRequest struct {
 	Schema        string      `json:"schema"`
 	EventType     string      `json:"event_type"` // CREATE, UPDATE
 	DocUID        string      `json:"doc_uid"`
-	DocVersion    int         `json:"doc_version"`
 	PrevEventID   *string     `json:"prev_event_id,omitempty"`
 	PrevEventLeaf *uint64     `json:"prev_event_leaf,omitempty"`
 	PayloadHash   PayloadHash `json:"payload_hash"`
@@ -84,7 +85,6 @@ const (
 	numCreateDocs = 20 // numero di documenti CREATE generati
 	numChosenDocs = 5  // documenti che ricevono UPDATE
 	eventSchema   = "pa-notary-event@1"
-	docUIDPrefix  = "PROT/2026"
 	docUIDBaseNum = 10000
 )
 
@@ -100,6 +100,7 @@ func main() {
 		days      = flag.Int("days", 0, "Distribuisce gli eventi sugli ultimi N giorni. 0 = data corrente")
 		issuerID  = flag.String("issuer-id", "IPA:COMUNE-XYZ", "Issuer entity_id")
 		issuerNam = flag.String("issuer-name", "Comune di Esempio — Ufficio Protocollo", "Issuer name")
+		docPrefix = flag.String("doc-prefix", "PROT", "Prefisso base doc_uid")
 	)
 	flag.Parse()
 	if *days < 0 {
@@ -120,6 +121,7 @@ func main() {
 	ctx := context.Background()
 
 	issuer := Issuer{EntityID: *issuerID, Name: *issuerNam}
+	runPrefix := mustMakeRunPrefix(*docPrefix)
 
 	// Pianifica la distribuzione di issued_at:
 	// - days=0  -> usa time.Now() per ogni evento
@@ -138,8 +140,9 @@ func main() {
 	} else {
 		fmt.Printf("[seed] issued_at in data corrente (days=0)\n")
 	}
+	fmt.Printf("[seed] doc_uid prefix per questa run: %s\n", runPrefix)
 
-	states, summary := runCreates(ctx, client, *baseURL, absOut, issuer, &issuedAtPlan)
+	states, summary := runCreates(ctx, client, *baseURL, absOut, runPrefix, issuer, &issuedAtPlan)
 	summary = append(summary, runUpdates(ctx, client, *baseURL, absOut, issuer, &issuedAtPlan, states, rng)...)
 
 	sumPath := filepath.Join(absOut, "summary.json")
@@ -148,12 +151,12 @@ func main() {
 		absOut, filepath.Join(absOut, "pdf"), filepath.Join(absOut, "event"), sumPath)
 }
 
-func runCreates(ctx context.Context, client *http.Client, baseURL, absOut string, issuer Issuer, plan *issuedAtPlanner) ([]DocState, []SummaryRow) {
+func runCreates(ctx context.Context, client *http.Client, baseURL, absOut, runPrefix string, issuer Issuer, plan *issuedAtPlanner) ([]DocState, []SummaryRow) {
 	states := make([]DocState, 0, numCreateDocs)
 	summary := make([]SummaryRow, 0, numCreateDocs)
 
 	for i := 1; i <= numCreateDocs; i++ {
-		docUID := fmt.Sprintf("%s/%05d", docUIDPrefix, docUIDBaseNum+i)
+		docUID := fmt.Sprintf("%s/%05d", runPrefix, docUIDBaseNum+i)
 		issuedAt := plan.Next()
 
 		pdfName := fmt.Sprintf("doc_%02d_v1.pdf", i)
@@ -168,7 +171,6 @@ func runCreates(ctx context.Context, client *http.Client, baseURL, absOut string
 			Schema:      eventSchema,
 			EventType:   "CREATE",
 			DocUID:      docUID,
-			DocVersion:  1,
 			PayloadHash: PayloadHash{Alg: "sha-256", Value: "hex:" + pdfHashHex},
 			Issuer:      issuer,
 			IssuedAt:    issuedAt.Format(time.RFC3339Nano),
@@ -244,7 +246,6 @@ func runUpdates(ctx context.Context, client *http.Client, baseURL, absOut string
 				Schema:        eventSchema,
 				EventType:     "UPDATE",
 				DocUID:        st.DocUID,
-				DocVersion:    newVersion,
 				PrevEventID:   &prevID,
 				PrevEventLeaf: &prevLeaf,
 				PayloadHash:   PayloadHash{Alg: "sha-256", Value: "hex:" + pdfHashHex},
@@ -324,6 +325,33 @@ func postEvent(ctx context.Context, client *http.Client, url string, ev AddEvent
 	}
 
 	return addResp.LogIndex, storedEv
+}
+
+func mustMakeRunPrefix(base string) string {
+	base = strings.TrimSpace(strings.TrimSuffix(base, "/"))
+	if base == "" {
+		panic("doc-prefix must not be empty")
+	}
+	return fmt.Sprintf("%s/%s", base, randomAlphaNum(4))
+}
+
+func randomAlphaNum(n int) string {
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+	if n <= 0 {
+		return ""
+	}
+
+	raw := make([]byte, n)
+	if _, err := cryptorand.Read(raw); err != nil {
+		panic(err)
+	}
+
+	buf := make([]byte, n)
+	for i, b := range raw {
+		buf[i] = alphabet[int(b)%len(alphabet)]
+	}
+	return string(buf)
 }
 
 func mustMakePDF(lines []string) []byte {

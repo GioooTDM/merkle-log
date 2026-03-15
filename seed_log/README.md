@@ -6,6 +6,7 @@ Tool CLI per generare dataset di esempio (PDF + eventi JSON) e inviarli a `/add`
 - Crea documenti PDF sintetici
 - Calcola `payload_hash` (`sha-256`) dei PDF
 - Invia eventi `CREATE` e `UPDATE` al server
+- Lascia al server l'assegnazione di `doc_version`
 - Salva:
   - eventi notarizzati restituiti dal server (`event/*.json`)
   - PDF generati (`pdf/*.pdf`)
@@ -25,6 +26,7 @@ go run ./seed_log -url http://localhost:2025/add -out ./seed_log/seed_data
 - `-days`: distribuisce `issued_at` sugli ultimi N giorni (`0` = data corrente)
 - `-issuer-id`: `issuer.entity_id` degli eventi generati
 - `-issuer-name`: `issuer.name` degli eventi generati
+- `-doc-prefix`: prefisso base dei `doc_uid`; il tool aggiunge automaticamente un segmento alfanumerico casuale per ogni run, per esempio `PROT/A2C3/10001`
 
 ## Output atteso
 Nella cartella `-out`:
