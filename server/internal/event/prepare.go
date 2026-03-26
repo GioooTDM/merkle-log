@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"merkle-log/internal/notaryapi"
 	"merkle-log/server/internal/hashutil"
 
 	jsoncanonicalizer "github.com/cyberphone/json-canonicalization/go/src/webpki.org/jsoncanonicalizer"
@@ -18,45 +19,15 @@ import (
 
 const eventSchema = "pa-notary-event@1"
 
-type AddEventRequest struct {
-	Schema        string       `json:"schema"`
-	EventType     string       `json:"event_type"`
-	DocUID        string       `json:"doc_uid"`
-	PrevEventID   *string      `json:"prev_event_id,omitempty"`
-	PrevEventLeaf *int64       `json:"prev_event_leaf,omitempty"`
-	PayloadHash   *PayloadHash `json:"payload_hash,omitempty"`
-	Issuer        Issuer       `json:"issuer"`
-	IssuedAt      string       `json:"issued_at"`
-	Title         string       `json:"title"`
-	Description   string       `json:"description,omitempty"`
-	Notes         string       `json:"notes,omitempty"`
-}
+type AddEventRequest = notaryapi.AddEventRequest
+type PayloadHash = notaryapi.PayloadHash
+type Issuer = notaryapi.Issuer
 
 type PreparedEvent struct {
-	Schema        string       `json:"schema"`
-	EventID       string       `json:"event_id"`
-	EventType     string       `json:"event_type"`
-	DocUID        string       `json:"doc_uid"`
-	DocVersion    int          `json:"doc_version"`
-	PrevEventID   *string      `json:"prev_event_id,omitempty"`
-	PrevEventLeaf *int64       `json:"prev_event_leaf,omitempty"`
-	PayloadHash   *PayloadHash `json:"payload_hash,omitempty"`
-	Issuer        Issuer       `json:"issuer"`
-	IssuedAt      string       `json:"issued_at"`
-	RecordedAt    string       `json:"recorded_at"`
-	Title         string       `json:"title"`
-	Description   string       `json:"description,omitempty"`
-	Notes         string       `json:"notes,omitempty"`
-}
-
-type PayloadHash struct {
-	Alg   string `json:"alg"`
-	Value string `json:"value"`
-}
-
-type Issuer struct {
-	EntityID string `json:"entity_id"`
-	Name     string `json:"name,omitempty"`
+	AddEventRequest
+	EventID    string `json:"event_id"`
+	DocVersion int    `json:"doc_version"`
+	RecordedAt string `json:"recorded_at"`
 }
 
 func (e PreparedEvent) DocHash() (string, error) {
@@ -149,23 +120,14 @@ func computeRecordedAt(now, issuedAt time.Time, useIssuedAtAsRecordedAt bool) (t
 }
 
 func buildPreparedEvent(req AddEventRequest, docVersion int, docHash string, issuedAt, recordedAt time.Time, eventID string) PreparedEvent {
-	canonicalPayloadHash := canonicalPayloadHash(req.PayloadHash != nil, docHash)
+	req.PayloadHash = canonicalPayloadHash(req.PayloadHash != nil, docHash)
+	req.IssuedAt = issuedAt.Format(time.RFC3339Nano)
 
 	return PreparedEvent{
-		Schema:        req.Schema,
-		EventID:       eventID,
-		EventType:     req.EventType,
-		DocUID:        req.DocUID,
-		DocVersion:    docVersion,
-		PrevEventID:   req.PrevEventID,
-		PrevEventLeaf: req.PrevEventLeaf,
-		PayloadHash:   canonicalPayloadHash,
-		Issuer:        req.Issuer,
-		IssuedAt:      issuedAt.Format(time.RFC3339Nano),
-		RecordedAt:    recordedAt.Format(time.RFC3339Nano),
-		Title:         req.Title,
-		Description:   req.Description,
-		Notes:         req.Notes,
+		AddEventRequest: req,
+		EventID:         eventID,
+		DocVersion:      docVersion,
+		RecordedAt:      recordedAt.Format(time.RFC3339Nano),
 	}
 }
 

@@ -18,6 +18,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"merkle-log/internal/notaryapi"
 )
 
 var (
@@ -30,32 +32,6 @@ var (
 	docPrefix   = flag.String("doc-prefix", "HAMMER", "Prefisso base doc_uid")
 	errLimit    = flag.Int("error-print-limit", 10, "Max errori stampati")
 )
-
-type issuer struct {
-	EntityID string `json:"entity_id"`
-	Name     string `json:"name,omitempty"`
-}
-
-type payloadHash struct {
-	Alg   string `json:"alg"`
-	Value string `json:"value"`
-}
-
-type addRequest struct {
-	Schema      string      `json:"schema"`
-	EventType   string      `json:"event_type"`
-	DocUID      string      `json:"doc_uid"`
-	PayloadHash payloadHash `json:"payload_hash"`
-	Issuer      issuer      `json:"issuer"`
-	IssuedAt    string      `json:"issued_at"`
-	Title       string      `json:"title"`
-	Description string      `json:"description,omitempty"`
-}
-
-type addResponse struct {
-	LogIndex     uint64          `json:"log_index"`
-	NotarizedRaw json.RawMessage `json:"notarized_json"`
-}
 
 type result struct {
 	Latency time.Duration
@@ -133,7 +109,7 @@ func main() {
 	printReport(runPrefix, elapsed, success, errs, latencies)
 }
 
-func doOne(client *http.Client, url string, timeout time.Duration, payload addRequest) result {
+func doOne(client *http.Client, url string, timeout time.Duration, payload notaryapi.AddEventRequest) result {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return result{Err: fmt.Errorf("marshal payload: %w", err)}
@@ -166,7 +142,7 @@ func doOne(client *http.Client, url string, timeout time.Duration, payload addRe
 		return result{Latency: lat, Err: fmt.Errorf("status=%d body=%q", resp.StatusCode, msg)}
 	}
 
-	var out addResponse
+	var out notaryapi.AddEventResponse
 	if err := json.Unmarshal(raw, &out); err != nil {
 		return result{Latency: lat, Err: fmt.Errorf("decode response: %w", err)}
 	}
@@ -176,16 +152,16 @@ func doOne(client *http.Client, url string, timeout time.Duration, payload addRe
 	return result{Latency: lat}
 }
 
-func makePayload(i int, runPrefix, issuerID, issuerName string) addRequest {
-	return addRequest{
+func makePayload(i int, runPrefix, issuerID, issuerName string) notaryapi.AddEventRequest {
+	return notaryapi.AddEventRequest{
 		Schema:    "pa-notary-event@1",
 		EventType: "CREATE",
 		DocUID:    fmt.Sprintf("%s/%08d", runPrefix, i+1),
-		PayloadHash: payloadHash{
+		PayloadHash: &notaryapi.PayloadHash{
 			Alg:   "sha-256",
 			Value: "hex:" + randomSHA256Hex(),
 		},
-		Issuer: issuer{
+		Issuer: notaryapi.Issuer{
 			EntityID: issuerID,
 			Name:     issuerName,
 		},
