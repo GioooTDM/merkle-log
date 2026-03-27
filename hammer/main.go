@@ -207,7 +207,7 @@ func randomAlphaNum(n int) string {
 }
 
 func printReport(runPrefix string, elapsed time.Duration, success, errs int, latencies []time.Duration) {
-	fmt.Println("\n=== HAMMER REPORT ===")
+	fmt.Println("=== HAMMER REPORT ===")
 	fmt.Printf("URL: %s\n", *url)
 	fmt.Printf("Run prefix: %s\n", runPrefix)
 	fmt.Printf("Requests: %d\n", *requests)

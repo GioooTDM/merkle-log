@@ -16,6 +16,7 @@ const issuerIdEl = el("issuerId");
 const issuerNameEl = el("issuerName");
 const docIdEl = el("docId");
 const eventTypeEl = el("eventType");
+const prevEventIdRowEl = el("prevEventIdRow");
 const prevEventIdEl = el("prevEventId");
 const titleEl = el("title");
 const descriptionEl = el("description");
@@ -46,6 +47,20 @@ function populateIssuerOptions() {
 function syncIssuerName() {
   const selected = DEMO_ISSUERS.find((issuer) => issuer.entityId === issuerIdEl.value);
   issuerNameEl.value = selected ? selected.name : "";
+}
+
+function eventTypeNeedsPrevEventId(eventType) {
+  return eventType === "UPDATE" || eventType === "REVOKE" || eventType === "EXPIRE";
+}
+
+function syncPrevEventIdVisibility() {
+  const needsPrev = eventTypeNeedsPrevEventId(eventTypeEl.value);
+  prevEventIdRowEl.hidden = !needsPrev;
+  prevEventIdEl.required = needsPrev;
+
+  if (!needsPrev) {
+    prevEventIdEl.value = "";
+  }
 }
 
 // ===== Form Helpers =====
@@ -113,7 +128,7 @@ function buildEventObject(data, payloadHex) {
   requireNonEmpty("doc_id", data.docId);
   requireNonEmpty("title", data.title);
 
-  const needsPrev = data.eventType === "UPDATE" || data.eventType === "REVOKE" || data.eventType === "EXPIRE";
+  const needsPrev = eventTypeNeedsPrevEventId(data.eventType);
 
   if (needsPrev) {
     requireNonEmpty("prev_event_id", data.prevEventId);
@@ -148,7 +163,9 @@ function buildEventObject(data, payloadHex) {
 
 populateIssuerOptions();
 syncIssuerName();
+syncPrevEventIdVisibility();
 issuerIdEl.addEventListener("change", syncIssuerName);
+eventTypeEl.addEventListener("change", syncPrevEventIdVisibility);
 
 // ===== UI Actions =====
 btnBuild.addEventListener("click", async () => {
@@ -258,7 +275,7 @@ document.getElementById("btnMock").addEventListener("click", () => {
   docIdEl.value = `${tipo.toUpperCase()}/${anno}/${num}`;
 
   eventTypeEl.value = "CREATE";
-  prevEventIdEl.value = "";
+  syncPrevEventIdVisibility();
 
   titleEl.value = `${tipo} dirigenziale n. ${num}`;
   descriptionEl.value = `Documento relativo alla gestione pratica ${num} per ${issuer.name}.`;
