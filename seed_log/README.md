@@ -26,10 +26,10 @@ go run ./seed_log -url http://localhost:2025/add -out ./seed_log/seed_data
 - `-days`: distribuisce `issued_at` sugli ultimi N giorni (`0` = data corrente)
 - `-issuer-id`: `issuer.entity_id` degli eventi generati
 - `-issuer-name`: `issuer.name` degli eventi generati
-- `-doc-prefix`: prefisso base dei `doc_uid`; il tool aggiunge automaticamente un segmento alfanumerico casuale per ogni run, per esempio `PROT/A2C3/10001`
+- `-doc-prefix`: prefisso base dei `doc_id`; il tool aggiunge automaticamente un segmento alfanumerico casuale per ogni run, per esempio `PROT/A2C3/10001`
 
 ## Output atteso
 Nella cartella `-out`:
 - `pdf/`: file PDF sorgente
 - `event/`: JSON notarizzati raw (quelli effettivamente appesi nel log)
-- `summary.json`: elenco sintetico con `doc_uid`, `doc_version`, `event_id`, `log_index`, path file
+- `summary.json`: elenco sintetico con `doc_id`, `doc_version`, `event_id`, `log_index`, path file

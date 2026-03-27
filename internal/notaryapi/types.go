@@ -15,7 +15,7 @@ type Issuer struct {
 type AddEventRequest struct {
 	Schema        string       `json:"schema"`
 	EventType     string       `json:"event_type"`
-	DocUID        string       `json:"doc_uid"`
+	DocID         string       `json:"doc_id"`
 	PrevEventID   *string      `json:"prev_event_id,omitempty"`
 	PrevEventLeaf *int64       `json:"prev_event_leaf,omitempty"`
 	PayloadHash   *PayloadHash `json:"payload_hash,omitempty"`

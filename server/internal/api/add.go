@@ -35,7 +35,7 @@ func (h *Handler) AddEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// TODO: questo controllo non è atomico con append+indexing. Due POST /add quasi simultanee
-	// sullo stesso doc_uid possono ancora leggere la stessa head e creare un fork.
+	// sullo stesso doc_id possono ancora leggere la stessa head e creare un fork.
 	docVersion, err := h.resolveDocumentVersion(r.Context(), req)
 	if err != nil {
 		http.Error(w, "Invalid document chain: "+err.Error(), http.StatusBadRequest)
@@ -50,7 +50,7 @@ func (h *Handler) AddEvent(w http.ResponseWriter, r *http.Request) {
 
 	docHash, err := prepared.DocHash()
 	if err != nil {
-		log.Printf("prepare/index metadata mismatch for event_id=%s doc_uid=%s: %v", prepared.EventID, prepared.DocUID, err)
+		log.Printf("prepare/index metadata mismatch for event_id=%s doc_id=%s: %v", prepared.EventID, prepared.DocID, err)
 		http.Error(w, "Internal error preparing index metadata", http.StatusInternalServerError)
 		return
 	}
@@ -68,14 +68,14 @@ func (h *Handler) AddEvent(w http.ResponseWriter, r *http.Request) {
 	// 3. Indicizzazione asincrona (opzionale) o sincrona
 	if err := h.indexer.AddEntry(index.Entry{
 		LogIndex:       idx.Index,
-		DocUID:         prepared.DocUID,
+		DocID:          prepared.DocID,
 		EventID:        prepared.EventID,
 		DocHash:        docHash,
 		LeafHash:       leafHash,
 		IssuerEntityID: prepared.Issuer.EntityID,
 		RecordedAt:     prepared.RecordedAt,
 	}); err != nil {
-		log.Printf("indexing error for event_id=%s doc_uid=%s index=%d: %v", prepared.EventID, prepared.DocUID, idx.Index, err)
+		log.Printf("indexing error for event_id=%s doc_id=%s index=%d: %v", prepared.EventID, prepared.DocID, idx.Index, err)
 		// Non blocchiamo la risposta se il log è ok ma l'indice fallisce,
 		// ma in produzione andrebbe gestito meglio
 	}
@@ -87,48 +87,48 @@ func (h *Handler) AddEvent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) resolveDocumentVersion(ctx context.Context, req event.AddEventRequest) (int, error) {
-	if req.DocUID == "" {
-		return 0, fmt.Errorf("doc_uid is required")
+	if req.DocID == "" {
+		return 0, fmt.Errorf("doc_id is required")
 	}
 
 	switch req.EventType {
 	case "CREATE":
-		_, found, err := h.indexer.GetLatestIndexByDocUID(req.DocUID)
+		_, found, err := h.indexer.GetLatestIndexByDocID(req.DocID)
 		if err != nil {
-			return 0, fmt.Errorf("lookup latest entry for doc_uid %q: %w", req.DocUID, err)
+			return 0, fmt.Errorf("lookup latest entry for doc_id %q: %w", req.DocID, err)
 		}
 		if found {
-			return 0, fmt.Errorf("doc_uid %q already exists", req.DocUID)
+			return 0, fmt.Errorf("doc_id %q already exists", req.DocID)
 		}
 		return 1, nil
 
 	case "UPDATE", "REVOKE", "EXPIRE":
-		latestIndex, found, err := h.indexer.GetLatestIndexByDocUID(req.DocUID)
+		latestIndex, found, err := h.indexer.GetLatestIndexByDocID(req.DocID)
 		if err != nil {
-			return 0, fmt.Errorf("lookup latest entry for doc_uid %q: %w", req.DocUID, err)
+			return 0, fmt.Errorf("lookup latest entry for doc_id %q: %w", req.DocID, err)
 		}
 		if !found {
-			return 0, fmt.Errorf("doc_uid %q has no existing chain", req.DocUID)
+			return 0, fmt.Errorf("doc_id %q has no existing chain", req.DocID)
 		}
 
 		raw, err := h.readEntryByIndex(ctx, latestIndex)
 		if err != nil {
-			return 0, fmt.Errorf("read latest entry for doc_uid %q: %w", req.DocUID, err)
+			return 0, fmt.Errorf("read latest entry for doc_id %q: %w", req.DocID, err)
 		}
 
 		head, err := event.DecodePreparedEvent(raw)
 		if err != nil {
-			return 0, fmt.Errorf("decode latest entry for doc_uid %q: %w", req.DocUID, err)
+			return 0, fmt.Errorf("decode latest entry for doc_id %q: %w", req.DocID, err)
 		}
 
-		if strings.TrimSpace(head.DocUID) != req.DocUID {
-			return 0, fmt.Errorf("doc_uid %q latest entry mismatch", req.DocUID)
+		if strings.TrimSpace(head.DocID) != req.DocID {
+			return 0, fmt.Errorf("doc_id %q latest entry mismatch", req.DocID)
 		}
 		if req.PrevEventID == nil {
 			return 0, fmt.Errorf("%s requires prev_event_id", req.EventType)
 		}
 		if strings.TrimSpace(*req.PrevEventID) != strings.TrimSpace(head.EventID) {
-			return 0, fmt.Errorf("prev_event_id must match latest event_id for doc_uid %q", req.DocUID)
+			return 0, fmt.Errorf("prev_event_id must match latest event_id for doc_id %q", req.DocID)
 		}
 		return head.DocVersion + 1, nil
 

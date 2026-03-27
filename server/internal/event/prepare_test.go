@@ -160,7 +160,7 @@ func TestRejectServerManagedFields(t *testing.T) {
 	}{
 		{
 			name:    "clean payload accepted",
-			input:   `{"schema":"pa-notary-event@1","doc_uid":"DOC/1"}`,
+			input:   `{"schema":"pa-notary-event@1","doc_id":"DOC/1"}`,
 			wantErr: false,
 		},
 		{
@@ -217,7 +217,7 @@ func TestDecodeAddEventRequest(t *testing.T) {
 			input: mustJSON(t, map[string]any{
 				"schema":        "pa-notary-event@1",
 				"event_type":    " update ",
-				"doc_uid":       " DOC/1 ",
+				"doc_id":        " DOC/1 ",
 				"prev_event_id": " 550e8400-e29b-41d4-a716-446655440000 ",
 				"payload_hash": map[string]any{
 					"alg":   "sha-256",
@@ -237,8 +237,8 @@ func TestDecodeAddEventRequest(t *testing.T) {
 				if got.EventType != "UPDATE" {
 					t.Errorf("EventType = %q, want UPDATE", got.EventType)
 				}
-				if got.DocUID != "DOC/1" {
-					t.Errorf("DocUID = %q, want DOC/1", got.DocUID)
+				if got.DocID != "DOC/1" {
+					t.Errorf("DocID = %q, want DOC/1", got.DocID)
 				}
 				if got.PrevEventID == nil || *got.PrevEventID != "550e8400-e29b-41d4-a716-446655440000" {
 					t.Errorf("PrevEventID = %v, want trimmed UUID", got.PrevEventID)
@@ -299,7 +299,7 @@ func TestDecodePreparedEvent(t *testing.T) {
 		"schema":      "pa-notary-event@1",
 		"event_id":    "550e8400-e29b-41d4-a716-446655440000",
 		"event_type":  "CREATE",
-		"doc_uid":     "DOC/1",
+		"doc_id":      "DOC/1",
 		"doc_version": 1,
 		"payload_hash": map[string]any{
 			"alg":   "sha-256",
@@ -323,8 +323,8 @@ func TestDecodePreparedEvent(t *testing.T) {
 	if got.DocVersion != 1 {
 		t.Fatalf("DocVersion = %d, want 1", got.DocVersion)
 	}
-	if got.DocUID != "DOC/1" {
-		t.Fatalf("DocUID = %q, want DOC/1", got.DocUID)
+	if got.DocID != "DOC/1" {
+		t.Fatalf("DocID = %q, want DOC/1", got.DocID)
 	}
 }
 

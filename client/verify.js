@@ -10,7 +10,7 @@ const $ = el;
 const statusEl = $("verifyStatus");
 const detailsEl = $("proofDetails");
 
-const resDocUid = $("resDocUid");
+const resDocId = $("resDocId");
 const resVersion = $("resVersion");
 const resDate = $("resDate");
 const resIndex = $("resIndex");
@@ -97,7 +97,7 @@ function extractEventPayloadHash(eventJson) {
 
 function pickMeta(eventJson) {
   return {
-    docUid: safeStr(eventJson?.doc_uid ?? eventJson?.document_id, "-"),
+    docId: safeStr(eventJson?.doc_id ?? eventJson?.document_id, "-"),
     version: safeStr(eventJson?.doc_version ?? eventJson?.version, "-"),
     date: safeStr(eventJson?.recorded_at ?? eventJson?.issued_at ?? eventJson?.time ?? eventJson?.date ?? eventJson?.timestamp, "-"),
   };
@@ -154,7 +154,7 @@ $("btnVerify").addEventListener("click", async () => {
 
     // UI
     const meta = pickMeta(eventJson);
-    resDocUid.textContent = String(meta.docUid);
+    resDocId.textContent = String(meta.docId);
     resVersion.textContent = String(meta.version);
     resDate.textContent = String(meta.date);
     resIndex.textContent = String(index);

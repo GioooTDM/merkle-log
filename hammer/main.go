@@ -29,7 +29,7 @@ var (
 	timeout     = flag.Duration("timeout", 10*time.Second, "Timeout per singola richiesta")
 	issuerID    = flag.String("issuer-id", "IPA:HAMMER", "issuer.entity_id")
 	issuerName  = flag.String("issuer-name", "Load Test", "issuer.name")
-	docPrefix   = flag.String("doc-prefix", "HAMMER", "Prefisso base doc_uid")
+	docPrefix   = flag.String("doc-prefix", "HAMMER", "Prefisso base doc_id")
 	errLimit    = flag.Int("error-print-limit", 10, "Max errori stampati")
 )
 
@@ -156,7 +156,7 @@ func makePayload(i int, runPrefix, issuerID, issuerName string) notaryapi.AddEve
 	return notaryapi.AddEventRequest{
 		Schema:    "pa-notary-event@1",
 		EventType: "CREATE",
-		DocUID:    fmt.Sprintf("%s/%08d", runPrefix, i+1),
+		DocID:     fmt.Sprintf("%s/%08d", runPrefix, i+1),
 		PayloadHash: &notaryapi.PayloadHash{
 			Alg:   "sha-256",
 			Value: "hex:" + randomSHA256Hex(),

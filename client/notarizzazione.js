@@ -14,7 +14,7 @@ const MAX_JSON_BYTES = 2048;
 const fileEl = el("file");
 const issuerIdEl = el("issuerId");
 const issuerNameEl = el("issuerName");
-const docUidEl = el("docUid");
+const docIdEl = el("docId");
 const eventTypeEl = el("eventType");
 const prevEventIdEl = el("prevEventId");
 const titleEl = el("title");
@@ -53,7 +53,7 @@ function getFormData() {
   return {
     issuerId: issuerIdEl.value.trim(),
     issuerName: issuerNameEl.value.trim(),
-    docUid: docUidEl.value.trim(),
+    docId: docIdEl.value.trim(),
     eventType: eventTypeEl.value,
     prevEventId: prevEventIdEl.value.trim(),
     title: titleEl.value.trim(),
@@ -110,7 +110,7 @@ async function sendNotarizationRequest(payload) {
 // ===== Business Logic =====
 function buildEventObject(data, payloadHex) {
   requireNonEmpty("issuer.entity_id", data.issuerId);
-  requireNonEmpty("doc_uid", data.docUid);
+  requireNonEmpty("doc_id", data.docId);
   requireNonEmpty("title", data.title);
 
   const needsPrev = data.eventType === "UPDATE" || data.eventType === "REVOKE" || data.eventType === "EXPIRE";
@@ -132,7 +132,7 @@ function buildEventObject(data, payloadHex) {
   return {
     schema: "pa-notary-event@1",
     event_type: data.eventType,
-    doc_uid: data.docUid,
+    doc_id: data.docId,
     ...(needsPrev ? { prev_event_id: data.prevEventId } : {}),
     ...(payloadHash ? { payload_hash: payloadHash } : {}),
     issuer: {
@@ -255,7 +255,7 @@ document.getElementById("btnMock").addEventListener("click", () => {
 
   issuerIdEl.value = issuer.entityId;
   syncIssuerName();
-  docUidEl.value = `${tipo.toUpperCase()}/${anno}/${num}`;
+  docIdEl.value = `${tipo.toUpperCase()}/${anno}/${num}`;
 
   eventTypeEl.value = "CREATE";
   prevEventIdEl.value = "";

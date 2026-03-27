@@ -96,7 +96,7 @@ func (idx *Indexer) checkSingleEntry(ctx context.Context, reader tessera.LogRead
 
 // indexedRow contiene i metadati di una entry indicizzata nel DB.
 type indexedRow struct {
-	DocUID         string
+	DocID          string
 	EventID        string
 	DocHash        string
 	LeafHash       string
@@ -117,10 +117,10 @@ func (idx *Indexer) countIndexedRows() (int64, error) {
 func (idx *Indexer) getIndexedRowByLogIndex(logIndex uint64) (indexedRow, error) {
 	var row indexedRow
 	err := idx.db.QueryRow(`
-		SELECT doc_uid, event_id, doc_hash, leaf_hash, issuer_entity_id
+		SELECT doc_id, event_id, doc_hash, leaf_hash, issuer_entity_id
 		FROM notary_index
 		WHERE log_index = ?
-	`, logIndex).Scan(&row.DocUID, &row.EventID, &row.DocHash, &row.LeafHash, &row.IssuerEntityID)
+	`, logIndex).Scan(&row.DocID, &row.EventID, &row.DocHash, &row.LeafHash, &row.IssuerEntityID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return indexedRow{}, sql.ErrNoRows
@@ -132,7 +132,7 @@ func (idx *Indexer) getIndexedRowByLogIndex(logIndex uint64) (indexedRow, error)
 
 // logEntry è la struttura attesa per ogni entry nel log di trasparenza.
 type logEntry struct {
-	DocUID      string       `json:"doc_uid"`
+	DocID       string       `json:"doc_id"`
 	EventID     string       `json:"event_id"`
 	PayloadHash *payloadHash `json:"payload_hash,omitempty"`
 	Issuer      issuer       `json:"issuer"`
@@ -147,15 +147,15 @@ type issuer struct {
 }
 
 // validateIndexedRowAgainstEntry confronta una riga del DB con la corrispondente entry del log,
-// verificando doc_uid, event_id, doc_hash e leaf_hash.
+// verificando doc_id, event_id, doc_hash e leaf_hash.
 func validateIndexedRowAgainstEntry(idx uint64, row indexedRow, entryRaw []byte) error {
 	var entry logEntry
 	if err := json.Unmarshal(entryRaw, &entry); err != nil {
 		return fmt.Errorf("db/log mismatch at index=%d: entry is not valid JSON: %w", idx, err)
 	}
 
-	if strings.TrimSpace(row.DocUID) != strings.TrimSpace(entry.DocUID) {
-		return fmt.Errorf("db/log mismatch at index=%d: doc_uid db=%q log=%q", idx, row.DocUID, entry.DocUID)
+	if strings.TrimSpace(row.DocID) != strings.TrimSpace(entry.DocID) {
+		return fmt.Errorf("db/log mismatch at index=%d: doc_id db=%q log=%q", idx, row.DocID, entry.DocID)
 	}
 	if strings.TrimSpace(row.EventID) != strings.TrimSpace(entry.EventID) {
 		return fmt.Errorf("db/log mismatch at index=%d: event_id db=%q log=%q", idx, row.EventID, entry.EventID)

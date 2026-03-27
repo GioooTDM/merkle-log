@@ -149,8 +149,8 @@
         try { return JSON.parse(text); } catch { return null; }
       },
 
-      async searchByDocUID(docUID) {
-        const url = `${API_BASE}/get-entries-by-docuid?doc_uid=${encodeURIComponent(docUID)}`;
+      async searchByDocID(docID) {
+        const url = `${API_BASE}/get-entries-by-docid?doc_id=${encodeURIComponent(docID)}`;
         return fetchJson(url);
       },
 
@@ -202,14 +202,14 @@
         DOM.filterDateToInput.value = "";
       },
 
-      rowFromEvent(ev, index, fallbackUID = "") {
+      rowFromEvent(ev, index, fallbackDocId = "") {
         return {
           index,
           date: formatDate(ev.recorded_at || ev.issued_at),
           dateRaw: safeStr(ev.recorded_at || ev.issued_at, ""),
           issuerEntityID: safeStr(ev?.issuer?.entity_id, ""),
           issuer: Utils.parseIssuer(ev.issuer),
-          uid: safeStr(ev.doc_uid || fallbackUID),
+          docId: safeStr(ev.doc_id || fallbackDocId),
           version: safeStr(ev.doc_version, "?"),
           title: safeStr(ev.title || ev.event_type || "Evento"),
           event_id: safeStr(ev.event_id),
@@ -228,7 +228,7 @@
       },
 
       rowsFromApiResponse(apiResp) {
-        const uid = apiResp?.doc_uid;
+        const docId = apiResp?.doc_id;
         const idxs = Array.isArray(apiResp?.indexes) ? apiResp.indexes : [];
         const entries = Array.isArray(apiResp?.entries) ? apiResp.entries : [];
 
@@ -237,7 +237,7 @@
         const rows = [];
         for (let i = 0; i < Math.min(idxs.length, parsed.length); i++) {
           const ev = parsed[i];
-          rows.push(this.rowFromEvent(ev, idxs[i], uid));
+          rows.push(this.rowFromEvent(ev, idxs[i], docId));
         }
 
         this.sortRowsNewestFirst(rows);
@@ -294,7 +294,7 @@
             <td>${item.issuer}</td>
             <td>
               <strong>${item.title}</strong><br>
-              <span class="muted" style="font-size: 0.75rem;">UID: ${item.uid}</span>
+              <span class="muted" style="font-size: 0.75rem;">ID: ${item.docId}</span>
             </td>
             <td><span class="badge-version">v${item.version}</span></td>
             <td><a href="details.html?index=${item.index}" class="action-link">Dettagli →</a></td>
@@ -319,13 +319,13 @@
 
       async handleSearch() {
         const issuerEntityID = DOM.filterIssuerSelect.value.trim();
-        const docUID = DOM.filterUidInput.value.trim();
+        const docID = DOM.filterUidInput.value.trim();
         const dateFrom = DOM.filterDateFromInput.value.trim();
         const dateTo = DOM.filterDateToInput.value.trim();
 
-        if (!issuerEntityID && !docUID && !dateFrom && !dateTo) {
+        if (!issuerEntityID && !docID && !dateFrom && !dateTo) {
           this.renderTable([]);
-          DOM.resultCount.innerText = "Seleziona un ente oppure inserisci doc_uid o data per cercare";
+          DOM.resultCount.innerText = "Seleziona un ente oppure inserisci doc_id o data per cercare";
           return;
         }
 
@@ -333,8 +333,8 @@
 
         try {
           let rows = [];
-          if (docUID) {
-            const resp = await API.searchByDocUID(docUID);
+          if (docID) {
+            const resp = await API.searchByDocID(docID);
             rows = this.rowsFromApiResponse(resp);
             rows = this.filterRowsByIssuer(rows, issuerEntityID);
             rows = this.filterRowsByDate(rows, dateFrom, dateTo);

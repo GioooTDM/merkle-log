@@ -84,7 +84,7 @@ func DecodeAddEventRequest(raw []byte) (AddEventRequest, error) {
 	}
 
 	req.EventType = normalizedEventType(req.EventType)
-	req.DocUID = strings.TrimSpace(req.DocUID)
+	req.DocID = strings.TrimSpace(req.DocID)
 	req.PrevEventID = trimmedOptionalString(req.PrevEventID)
 	req.Issuer.EntityID = strings.TrimSpace(req.Issuer.EntityID)
 	req.Issuer.Name = strings.TrimSpace(req.Issuer.Name)
@@ -188,8 +188,8 @@ func validateAddEventRequest(req AddEventRequest) (string, time.Time, error) {
 		return "", time.Time{}, fmt.Errorf("schema must be %q", eventSchema)
 	}
 
-	if req.DocUID == "" {
-		return "", time.Time{}, fmt.Errorf("doc_uid is required")
+	if req.DocID == "" {
+		return "", time.Time{}, fmt.Errorf("doc_id is required")
 	}
 	if req.Issuer.EntityID == "" {
 		return "", time.Time{}, fmt.Errorf("issuer.entity_id is required")

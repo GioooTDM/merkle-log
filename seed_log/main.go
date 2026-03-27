@@ -35,7 +35,7 @@ type NotaryEvent struct {
 	Schema        string      `json:"schema"`
 	EventID       string      `json:"event_id"`
 	EventType     string      `json:"event_type"` // CREATE, UPDATE
-	DocUID        string      `json:"doc_uid"`
+	DocID         string      `json:"doc_id"`
 	DocVersion    int         `json:"doc_version"`
 	PrevEventID   *string     `json:"prev_event_id,omitempty"`
 	PrevEventLeaf *uint64     `json:"prev_event_leaf,omitempty"`
@@ -51,7 +51,7 @@ type NotaryEvent struct {
 type AddEventRequest struct {
 	Schema        string      `json:"schema"`
 	EventType     string      `json:"event_type"` // CREATE, UPDATE
-	DocUID        string      `json:"doc_uid"`
+	DocID         string      `json:"doc_id"`
 	PrevEventID   *string     `json:"prev_event_id,omitempty"`
 	PrevEventLeaf *uint64     `json:"prev_event_leaf,omitempty"`
 	PayloadHash   PayloadHash `json:"payload_hash"`
@@ -63,7 +63,7 @@ type AddEventRequest struct {
 }
 
 type DocState struct {
-	DocUID        string
+	DocID         string
 	Version       int
 	PrevEventID   string
 	PrevEventLeaf uint64
@@ -71,7 +71,7 @@ type DocState struct {
 }
 
 type SummaryRow struct {
-	DocUID        string `json:"doc_uid"`
+	DocID         string `json:"doc_id"`
 	Version       int    `json:"doc_version"`
 	EventID       string `json:"event_id"`
 	EventType     string `json:"event_type"`
@@ -85,7 +85,7 @@ const (
 	numCreateDocs = 20 // numero di documenti CREATE generati
 	numChosenDocs = 5  // documenti che ricevono UPDATE
 	eventSchema   = "pa-notary-event@1"
-	docUIDBaseNum = 10000
+	docIDBaseNum  = 10000
 )
 
 // updatesPerChosenDoc definisce quanti UPDATE riceve ciascuno dei numChosenDocs documenti.
@@ -100,7 +100,7 @@ func main() {
 		days      = flag.Int("days", 0, "Distribuisce gli eventi sugli ultimi N giorni. 0 = data corrente")
 		issuerID  = flag.String("issuer-id", "IPA:COMUNE-XYZ", "Issuer entity_id")
 		issuerNam = flag.String("issuer-name", "Comune di Esempio — Ufficio Protocollo", "Issuer name")
-		docPrefix = flag.String("doc-prefix", "PROT", "Prefisso base doc_uid")
+		docPrefix = flag.String("doc-prefix", "PROT", "Prefisso base doc_id")
 	)
 	flag.Parse()
 	if *days < 0 {
@@ -140,7 +140,7 @@ func main() {
 	} else {
 		fmt.Printf("[seed] issued_at in data corrente (days=0)\n")
 	}
-	fmt.Printf("[seed] doc_uid prefix per questa run: %s\n", runPrefix)
+	fmt.Printf("[seed] doc_id prefix per questa run: %s\n", runPrefix)
 
 	states, summary := runCreates(ctx, client, *baseURL, absOut, runPrefix, issuer, &issuedAtPlan)
 	summary = append(summary, runUpdates(ctx, client, *baseURL, absOut, issuer, &issuedAtPlan, states, rng)...)
@@ -156,12 +156,12 @@ func runCreates(ctx context.Context, client *http.Client, baseURL, absOut, runPr
 	summary := make([]SummaryRow, 0, numCreateDocs)
 
 	for i := 1; i <= numCreateDocs; i++ {
-		docUID := fmt.Sprintf("%s/%05d", runPrefix, docUIDBaseNum+i)
+		docID := fmt.Sprintf("%s/%05d", runPrefix, docIDBaseNum+i)
 		issuedAt := plan.Next()
 
 		pdfName := fmt.Sprintf("doc_%02d_v1.pdf", i)
 		pdfPath := filepath.Join(absOut, "pdf", pdfName)
-		pdfBytes := mustMakePDF(buildPALines(docUID, 1, i, false, issuedAt))
+		pdfBytes := mustMakePDF(buildPALines(docID, 1, i, false, issuedAt))
 		must(os.WriteFile(pdfPath, pdfBytes, 0o644))
 
 		pdfHash := sha256.Sum256(pdfBytes)
@@ -170,7 +170,7 @@ func runCreates(ctx context.Context, client *http.Client, baseURL, absOut, runPr
 		reqEv := AddEventRequest{
 			Schema:      eventSchema,
 			EventType:   "CREATE",
-			DocUID:      docUID,
+			DocID:       docID,
 			PayloadHash: PayloadHash{Alg: "sha-256", Value: "hex:" + pdfHashHex},
 			Issuer:      issuer,
 			IssuedAt:    issuedAt.Format(time.RFC3339Nano),
@@ -185,7 +185,7 @@ func runCreates(ctx context.Context, client *http.Client, baseURL, absOut, runPr
 		must(writeJSON(evPath, storedEv))
 
 		states = append(states, DocState{
-			DocUID:        docUID,
+			DocID:         docID,
 			Version:       1,
 			PrevEventID:   storedEv.EventID,
 			PrevEventLeaf: logIndex,
@@ -193,7 +193,7 @@ func runCreates(ctx context.Context, client *http.Client, baseURL, absOut, runPr
 		})
 
 		summary = append(summary, SummaryRow{
-			DocUID:        docUID,
+			DocID:         docID,
 			Version:       1,
 			EventID:       storedEv.EventID,
 			EventType:     storedEv.EventType,
@@ -203,7 +203,7 @@ func runCreates(ctx context.Context, client *http.Client, baseURL, absOut, runPr
 			PDFHashHex:    pdfHashHex,
 		})
 
-		fmt.Printf("[CREATE] %s -> log_index=%d\n", docUID, logIndex)
+		fmt.Printf("[CREATE] %s -> log_index=%d\n", docID, logIndex)
 	}
 	return states, summary
 }
@@ -226,7 +226,7 @@ func runUpdates(ctx context.Context, client *http.Client, baseURL, absOut string
 			pdfPath := filepath.Join(absOut, "pdf", pdfName)
 
 			lines := append(
-				buildPALines(st.DocUID, newVersion, idx+1, true, issuedAt),
+				buildPALines(st.DocID, newVersion, idx+1, true, issuedAt),
 				"",
 				"— AGGIORNAMENTO —",
 				fmt.Sprintf("Annotazione: rettifica ref. interno n. %d/%d.", 200+updateSerial, 2026),
@@ -245,7 +245,7 @@ func runUpdates(ctx context.Context, client *http.Client, baseURL, absOut string
 			reqEv := AddEventRequest{
 				Schema:        eventSchema,
 				EventType:     "UPDATE",
-				DocUID:        st.DocUID,
+				DocID:         st.DocID,
 				PrevEventID:   &prevID,
 				PrevEventLeaf: &prevLeaf,
 				PayloadHash:   PayloadHash{Alg: "sha-256", Value: "hex:" + pdfHashHex},
@@ -262,7 +262,7 @@ func runUpdates(ctx context.Context, client *http.Client, baseURL, absOut string
 			must(writeJSON(evPath, storedEv))
 
 			st = DocState{
-				DocUID:        st.DocUID,
+				DocID:         st.DocID,
 				Version:       newVersion,
 				PrevEventID:   storedEv.EventID,
 				PrevEventLeaf: logIndex,
@@ -271,7 +271,7 @@ func runUpdates(ctx context.Context, client *http.Client, baseURL, absOut string
 			states[idx] = st
 
 			summary = append(summary, SummaryRow{
-				DocUID:        st.DocUID,
+				DocID:         st.DocID,
 				Version:       newVersion,
 				EventID:       storedEv.EventID,
 				EventType:     storedEv.EventType,
@@ -281,7 +281,7 @@ func runUpdates(ctx context.Context, client *http.Client, baseURL, absOut string
 				PDFHashHex:    pdfHashHex,
 			})
 			fmt.Printf("[UPDATE] %s v%d -> log_index=%d (prev=%s) [%d/%d]\n",
-				st.DocUID, newVersion, logIndex, prevID, u, numUpdates)
+				st.DocID, newVersion, logIndex, prevID, u, numUpdates)
 
 			time.Sleep(10 * time.Millisecond)
 		}
@@ -385,8 +385,8 @@ func makePDF(lines []string) ([]byte, error) {
 	return out.Bytes(), nil
 }
 
-func buildPALines(docUID string, version int, seq int, isUpdate bool, issuedAt time.Time) []string {
-	prot := docUID
+func buildPALines(docID string, version int, seq int, isUpdate bool, issuedAt time.Time) []string {
+	prot := docID
 	tipo := "DETERMINA DIRIGENZIALE"
 	if isUpdate {
 		tipo = "DETERMINA DIRIGENZIALE (AGGIORNAMENTO)"

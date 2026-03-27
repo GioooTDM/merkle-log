@@ -36,7 +36,7 @@
 
     <header style="text-align: left; margin-bottom: 20px;">
       <h1 id="docTitle">Caricamento...</h1>
-      <p class="subtitle" id="docUid">UID: ...</p>
+      <p class="subtitle" id="docId">ID: ...</p>
     </header>
 
     <section class="card">
@@ -96,7 +96,7 @@
   } from "./common.js";
 
   const docTitleEl = el('docTitle');
-  const docUidEl = el('docUid');
+  const docIdEl = el('docId');
   const docIssuerEl = el('docIssuer');
   const docDateEl = el('docDate');
   const docIndexEl = el('docIndex');
@@ -122,7 +122,7 @@
     const ev = JSON.parse(raw);
 
     // Mappa campi in modo robusto (adatta se i nomi cambiano)
-    const doc_uid = ev.doc_uid;
+    const doc_id = ev.doc_id;
     const event_id = ev.event_id;
     const event_type = (ev.event_type || "").toUpperCase();
     const doc_version = Number(ev.doc_version || 0);
@@ -134,7 +134,7 @@
     const issuer = safeStr(ev.issuer?.name);
 
     const date = formatDate(ev.recorded_at || ev.issued_at);
-    const title = safeStr(ev.title || `${event_type || "EVENTO"} — ${doc_uid}`);
+    const title = safeStr(ev.title || `${event_type || "EVENTO"} — ${doc_id}`);
     const hash = normalizeHex(ev.payload_hash?.value);
 
     const notes = safeStr(ev.notes || ev.description || "");
@@ -145,7 +145,7 @@
     return {
       raw,
       ev,
-      uid: doc_uid,
+      docId: doc_id,
       event_id,
       event_type,
       version: doc_version,
@@ -208,24 +208,24 @@
   async function loadDetails() {
     if (!Number.isSafeInteger(currentIndex) || currentIndex < 0) {
       docTitleEl.innerText = "Indice non valido";
-      docUidEl.innerText = "Passa ?index=<numero> nella URL.";
+      docIdEl.innerText = "Passa ?index=<numero> nella URL.";
       return;
     }
 
-    // 2) Recupera l'entry corrente per ottenere doc_uid
+    // 2) Recupera l'entry corrente per ottenere doc_id
     const currentRaw = await fetchText(`${API_BASE}/get-entry/${currentIndex}`);
     const currentParsed = parseEvent(currentRaw);
 
-    if (!currentParsed.uid) {
-      throw new Error("doc_uid mancante nell'evento corrente");
+    if (!currentParsed.docId) {
+      throw new Error("doc_id mancante nell'evento corrente");
     }
 
-    // 3) Recupera tutti gli indici per doc_uid
-    const idxResp = await fetchJson(`${API_BASE}/get-indexes?doc_uid=${encodeURIComponent(currentParsed.uid)}`);
+    // 3) Recupera tutti gli indici per doc_id
+    const idxResp = await fetchJson(`${API_BASE}/get-indexes?doc_id=${encodeURIComponent(currentParsed.docId)}`);
     const indexes = idxResp.indexes;
 
     if (!Array.isArray(indexes) || indexes.length === 0) {
-      throw new Error("Nessun indice trovato per doc_uid");
+      throw new Error("Nessun indice trovato per doc_id");
     }
 
     // 4) Recupera tutte le entry (in parallelo, con fallback se qualche fetch fallisce)
@@ -236,8 +236,8 @@
       return parsed;
     }));
 
-    // Filtra solo quelle coerenti (stesso doc_uid)
-    const history = entries.filter(e => e.uid === currentParsed.uid);
+    // Filtra solo quelle coerenti (stesso doc_id)
+    const history = entries.filter(e => e.docId === currentParsed.docId);
 
     // Ordina: preferisci catena prev_event_id, fallback su version/index
     const ordered = sortHistory(history);
@@ -248,7 +248,7 @@
 
     // Popola intestazione e griglia
     docTitleEl.innerText = currentDoc.title;
-    docUidEl.innerText = `UID: ${currentDoc.uid} — Versione ${currentDoc.version || "-"}`;
+    docIdEl.innerText = `ID: ${currentDoc.docId} — Versione ${currentDoc.version || "-"}`;
     docIssuerEl.innerText = currentDoc.issuer;
     docDateEl.innerText = currentDoc.date;
     docIndexEl.innerText = currentDoc.index;
@@ -301,7 +301,7 @@
     } catch (err) {
       console.error(err);
       docTitleEl.innerText = "Errore nel caricamento";
-      docUidEl.innerText = err?.message || String(err);
+      docIdEl.innerText = err?.message || String(err);
     }
   })();
 </script>

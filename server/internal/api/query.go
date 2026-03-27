@@ -63,18 +63,18 @@ func (h *Handler) GetByLeaf(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, map[string]any{"log_index": logIndex})
 }
 
-func (h *Handler) GetIndexesByDocUID(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) GetIndexesByDocID(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed. Only GET", http.StatusMethodNotAllowed)
 		return
 	}
 
-	docUID, ok := requireQueryParam(w, r, "doc_uid", "Missing doc_uid")
+	docID, ok := requireQueryParam(w, r, "doc_id", "Missing doc_id")
 	if !ok {
 		return
 	}
 
-	indexes, err := h.indexer.GetIndexesByDocUID(docUID)
+	indexes, err := h.indexer.GetIndexesByDocID(docID)
 	if err != nil {
 		http.Error(w, "DB error", http.StatusInternalServerError)
 		return
@@ -85,25 +85,25 @@ func (h *Handler) GetIndexesByDocUID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonResponse(w, map[string]any{
-		"doc_uid": docUID,
+		"doc_id":  docID,
 		"indexes": indexes,
 		"count":   len(indexes),
 	})
 }
 
-func (h *Handler) GetEntriesByDocUID(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) GetEntriesByDocID(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed. Only GET", http.StatusMethodNotAllowed)
 		return
 	}
 
-	docUID, ok := requireQueryParam(w, r, "doc_uid", "Missing doc_uid")
+	docID, ok := requireQueryParam(w, r, "doc_id", "Missing doc_id")
 	if !ok {
 		return
 	}
 
 	// 1) recupera indici da DB
-	indexes, err := h.indexer.GetIndexesByDocUID(docUID)
+	indexes, err := h.indexer.GetIndexesByDocID(docID)
 	if err != nil {
 		http.Error(w, "DB error", http.StatusInternalServerError)
 		return
@@ -128,8 +128,8 @@ func (h *Handler) GetEntriesByDocUID(w http.ResponseWriter, r *http.Request) {
 			// Per ora: salta entry non leggibile
 			continue
 		}
-		if !entryMatchesDocUID(b, docUID) {
-			log.Printf("index mismatch: requested doc_uid=%q index=%d", docUID, idx)
+		if !entryMatchesDocID(b, docID) {
+			log.Printf("index mismatch: requested doc_id=%q index=%d", docID, idx)
 			continue
 		}
 		entries = append(entries, json.RawMessage(b))
@@ -137,13 +137,13 @@ func (h *Handler) GetEntriesByDocUID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(entries) == 0 {
-		http.Error(w, "No entries available for this doc_uid", http.StatusNotFound)
+		http.Error(w, "No entries available for this doc_id", http.StatusNotFound)
 		return
 	}
 
 	// 3) response
 	jsonResponse(w, map[string]any{
-		"doc_uid": docUID,
+		"doc_id":  docID,
 		"indexes": okIndexes,
 		"count":   len(entries),
 		"entries": entries,
@@ -297,12 +297,12 @@ func parseISODateStart(raw string) (time.Time, error) {
 	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC), nil
 }
 
-func entryMatchesDocUID(raw []byte, wantDocUID string) bool {
+func entryMatchesDocID(raw []byte, wantDocID string) bool {
 	var entry struct {
-		DocUID string `json:"doc_uid"`
+		DocID string `json:"doc_id"`
 	}
 	if err := json.Unmarshal(raw, &entry); err != nil {
 		return false
 	}
-	return strings.TrimSpace(entry.DocUID) == strings.TrimSpace(wantDocUID)
+	return strings.TrimSpace(entry.DocID) == strings.TrimSpace(wantDocID)
 }
