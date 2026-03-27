@@ -18,48 +18,20 @@ import (
 	"strings"
 	"time"
 
+	"merkle-log/internal/notaryapi"
+
 	"github.com/go-pdf/fpdf"
 )
 
-type PayloadHash struct {
-	Alg   string `json:"alg"`
-	Value string `json:"value"` // "hex:<...>"
-}
-
-type Issuer struct {
-	EntityID string `json:"entity_id"`
-	Name     string `json:"name,omitempty"`
-}
+type PayloadHash = notaryapi.PayloadHash
+type Issuer = notaryapi.Issuer
+type AddEventRequest = notaryapi.AddEventRequest
 
 type NotaryEvent struct {
-	Schema        string      `json:"schema"`
-	EventID       string      `json:"event_id"`
-	EventType     string      `json:"event_type"` // CREATE, UPDATE
-	DocID         string      `json:"doc_id"`
-	DocVersion    int         `json:"doc_version"`
-	PrevEventID   *string     `json:"prev_event_id,omitempty"`
-	PrevEventLeaf *uint64     `json:"prev_event_leaf,omitempty"`
-	PayloadHash   PayloadHash `json:"payload_hash"`
-	Issuer        Issuer      `json:"issuer"`
-	IssuedAt      string      `json:"issued_at"`
-	RecordedAt    string      `json:"recorded_at"`
-	Title         string      `json:"title,omitempty"`
-	Description   string      `json:"description,omitempty"`
-	Notes         string      `json:"notes,omitempty"`
-}
-
-type AddEventRequest struct {
-	Schema        string      `json:"schema"`
-	EventType     string      `json:"event_type"` // CREATE, UPDATE
-	DocID         string      `json:"doc_id"`
-	PrevEventID   *string     `json:"prev_event_id,omitempty"`
-	PrevEventLeaf *uint64     `json:"prev_event_leaf,omitempty"`
-	PayloadHash   PayloadHash `json:"payload_hash"`
-	Issuer        Issuer      `json:"issuer"`
-	IssuedAt      string      `json:"issued_at"`
-	Title         string      `json:"title,omitempty"`
-	Description   string      `json:"description,omitempty"`
-	Notes         string      `json:"notes,omitempty"`
+	AddEventRequest
+	EventID    string `json:"event_id"`
+	DocVersion int    `json:"doc_version"`
+	RecordedAt string `json:"recorded_at"`
 }
 
 type DocState struct {
@@ -171,7 +143,7 @@ func runCreates(ctx context.Context, client *http.Client, baseURL, absOut, runPr
 			Schema:      eventSchema,
 			EventType:   "CREATE",
 			DocID:       docID,
-			PayloadHash: PayloadHash{Alg: "sha-256", Value: "hex:" + pdfHashHex},
+			PayloadHash: &PayloadHash{Alg: "sha-256", Value: "hex:" + pdfHashHex},
 			Issuer:      issuer,
 			IssuedAt:    issuedAt.Format(time.RFC3339Nano),
 			Title:       "Atto amministrativo — Emissione",
@@ -240,7 +212,7 @@ func runUpdates(ctx context.Context, client *http.Client, baseURL, absOut string
 			pdfHashHex := hex.EncodeToString(pdfHash[:])
 
 			prevID := st.PrevEventID
-			prevLeaf := st.PrevEventLeaf
+			prevLeaf := int64(st.PrevEventLeaf)
 
 			reqEv := AddEventRequest{
 				Schema:        eventSchema,
@@ -248,7 +220,7 @@ func runUpdates(ctx context.Context, client *http.Client, baseURL, absOut string
 				DocID:         st.DocID,
 				PrevEventID:   &prevID,
 				PrevEventLeaf: &prevLeaf,
-				PayloadHash:   PayloadHash{Alg: "sha-256", Value: "hex:" + pdfHashHex},
+				PayloadHash:   &PayloadHash{Alg: "sha-256", Value: "hex:" + pdfHashHex},
 				Issuer:        issuer,
 				IssuedAt:      issuedAt.Format(time.RFC3339Nano),
 				Title:         "Atto amministrativo — Aggiornamento",
