@@ -262,7 +262,7 @@
       }
     });
 
-    // --- STEP 4: Chiamata reale a /get-proof/ ---
+    // --- STEP 4: Chiamata reale a /get-inclusion/ ---
     btnGetProof.addEventListener('click', async () => {
       btnGetProof.innerText = "Recupero proof...";
       btnGetProof.disabled = true;
@@ -270,7 +270,7 @@
       try {
         if (logIndex === null) throw new Error("Indice log non disponibile.");
 
-        const proofData = await fetchJson(`${API_BASE}/get-proof/${encodeURIComponent(logIndex)}`);
+        const proofData = await fetchJson(`${API_BASE}/get-inclusion/${encodeURIComponent(logIndex)}`);
 
         if (!proofData.proof || !Array.isArray(proofData.proof)) {
           throw new Error("Formato proof non valido ricevuto dal server.");

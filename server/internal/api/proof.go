@@ -8,13 +8,13 @@ import (
 	"merkle-log/server/internal/proofsvc"
 )
 
-func (h *Handler) GetProof(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) GetInclusionProof(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed. Only GET", http.StatusMethodNotAllowed)
 		return
 	}
 
-	idx, err := parseIndexFromPath(r.URL.Path, "/get-proof/")
+	idx, err := parseIndexFromPath(r.URL.Path, "/get-inclusion/")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

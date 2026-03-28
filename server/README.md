@@ -41,7 +41,7 @@ Comportamento:
 - puoi leggere l'ultimo checkpoint notarizzato (fake blockchain) con `GET /anchor/latest`
 
 ## Endpoint proof
-- Inclusion proof: `GET /get-proof/{log_index}`
+- Inclusion proof: `GET /get-inclusion/{log_index}`
 - Consistency proof: `GET /get-consistency?from={tree_size_a}&to={tree_size_b}`
 
 ## Note su indice SQLite
