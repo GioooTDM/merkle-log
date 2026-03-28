@@ -169,53 +169,71 @@ func TestIndexer_Constraints(t *testing.T) {
 	}
 }
 
-func TestIndexer_GetIndexesByRecordedAtRange(t *testing.T) {
+func TestIndexer_SearchIndexes(t *testing.T) {
 	idx := newTestIndexer(t)
 
-	if err := idx.AddEntry(Entry{LogIndex: 10, DocID: "DOC-1", EventID: "evt-1", DocHash: strings.Repeat("a", 64), LeafHash: strings.Repeat("1", 64), IssuerEntityID: "IPA:C_ROMA", RecordedAt: "2026-01-01T10:00:00Z"}); err != nil {
-		t.Fatalf("AddEntry #1 error = %v", err)
-	}
-	if err := idx.AddEntry(Entry{LogIndex: 11, DocID: "DOC-2", EventID: "evt-2", DocHash: strings.Repeat("b", 64), LeafHash: strings.Repeat("2", 64), IssuerEntityID: "IPA:C_MILANO", RecordedAt: "2026-01-02T10:00:00Z"}); err != nil {
-		t.Fatalf("AddEntry #2 error = %v", err)
-	}
-	if err := idx.AddEntry(Entry{LogIndex: 12, DocID: "DOC-3", EventID: "evt-3", DocHash: strings.Repeat("c", 64), LeafHash: strings.Repeat("3", 64), IssuerEntityID: "IPA:C_TORINO", RecordedAt: "2026-01-03T10:00:00Z"}); err != nil {
-		t.Fatalf("AddEntry #3 error = %v", err)
+	mustAdd := func(entry Entry) {
+		t.Helper()
+		if err := idx.AddEntry(entry); err != nil {
+			t.Fatalf("AddEntry(%+v) error = %v", entry, err)
+		}
 	}
 
-	from := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
-	to := time.Date(2026, 1, 3, 0, 0, 0, 0, time.UTC)
+	mustAdd(Entry{LogIndex: 10, DocID: "DOC-1", EventID: "evt-1", DocHash: strings.Repeat("a", 64), LeafHash: strings.Repeat("1", 64), IssuerEntityID: "IPA:C_ROMA", RecordedAt: "2026-01-01T10:00:00Z"})
+	mustAdd(Entry{LogIndex: 11, DocID: "DOC-2", EventID: "evt-2", DocHash: strings.Repeat("b", 64), LeafHash: strings.Repeat("2", 64), IssuerEntityID: "IPA:C_MILANO", RecordedAt: "2026-01-02T10:00:00Z"})
+	mustAdd(Entry{LogIndex: 12, DocID: "DOC-1", EventID: "evt-3", DocHash: strings.Repeat("c", 64), LeafHash: strings.Repeat("3", 64), IssuerEntityID: "IPA:C_ROMA", RecordedAt: "2026-01-03T10:00:00Z"})
 
-	indexes, err := idx.GetIndexesByRecordedAtRange(from, to)
-	if err != nil {
-		t.Fatalf("GetIndexesByRecordedAtRange() error = %v", err)
-	}
-	want := []uint64{11}
-	if !reflect.DeepEqual(indexes, want) {
-		t.Fatalf("GetIndexesByRecordedAtRange() = %v, want %v", indexes, want)
-	}
-}
+	t.Run("all desc paginated", func(t *testing.T) {
+		got, err := idx.SearchIndexes(SearchParams{
+			Order:  "desc",
+			Limit:  2,
+			Offset: 0,
+		})
+		if err != nil {
+			t.Fatalf("SearchIndexes() error = %v", err)
+		}
+		if got.TotalCount != 3 {
+			t.Fatalf("TotalCount = %d, want 3", got.TotalCount)
+		}
+		want := []uint64{12, 11}
+		if !reflect.DeepEqual(got.Indexes, want) {
+			t.Fatalf("Indexes = %v, want %v", got.Indexes, want)
+		}
+	})
 
-func TestIndexer_GetIndexesByIssuerEntityID(t *testing.T) {
-	idx := newTestIndexer(t)
+	t.Run("doc and issuer filters", func(t *testing.T) {
+		got, err := idx.SearchIndexes(SearchParams{
+			DocID:          "DOC-1",
+			IssuerEntityID: "IPA:C_ROMA",
+			Order:          "asc",
+		})
+		if err != nil {
+			t.Fatalf("SearchIndexes() error = %v", err)
+		}
+		if got.TotalCount != 2 {
+			t.Fatalf("TotalCount = %d, want 2", got.TotalCount)
+		}
+		want := []uint64{10, 12}
+		if !reflect.DeepEqual(got.Indexes, want) {
+			t.Fatalf("Indexes = %v, want %v", got.Indexes, want)
+		}
+	})
 
-	if err := idx.AddEntry(Entry{LogIndex: 10, DocID: "DOC-1", EventID: "evt-1", DocHash: strings.Repeat("a", 64), LeafHash: strings.Repeat("1", 64), IssuerEntityID: "IPA:C_ROMA", RecordedAt: "2026-01-01T10:00:00Z"}); err != nil {
-		t.Fatalf("AddEntry #1 error = %v", err)
-	}
-	if err := idx.AddEntry(Entry{LogIndex: 11, DocID: "DOC-2", EventID: "evt-2", DocHash: strings.Repeat("b", 64), LeafHash: strings.Repeat("2", 64), IssuerEntityID: "IPA:C_MILANO", RecordedAt: "2026-01-02T10:00:00Z"}); err != nil {
-		t.Fatalf("AddEntry #2 error = %v", err)
-	}
-	if err := idx.AddEntry(Entry{LogIndex: 12, DocID: "DOC-3", EventID: "evt-3", DocHash: strings.Repeat("c", 64), LeafHash: strings.Repeat("3", 64), IssuerEntityID: "IPA:C_ROMA", RecordedAt: "2026-01-03T10:00:00Z"}); err != nil {
-		t.Fatalf("AddEntry #3 error = %v", err)
-	}
-
-	from := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
-
-	indexes, err := idx.GetIndexesByIssuerEntityID("IPA:C_ROMA", from, time.Time{})
-	if err != nil {
-		t.Fatalf("GetIndexesByIssuerEntityID() error = %v", err)
-	}
-	want := []uint64{12}
-	if !reflect.DeepEqual(indexes, want) {
-		t.Fatalf("GetIndexesByIssuerEntityID() = %v, want %v", indexes, want)
-	}
+	t.Run("date filter", func(t *testing.T) {
+		got, err := idx.SearchIndexes(SearchParams{
+			FromInclusive: time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC),
+			ToExclusive:   time.Date(2026, 1, 4, 0, 0, 0, 0, time.UTC),
+			Order:         "desc",
+		})
+		if err != nil {
+			t.Fatalf("SearchIndexes() error = %v", err)
+		}
+		if got.TotalCount != 2 {
+			t.Fatalf("TotalCount = %d, want 2", got.TotalCount)
+		}
+		want := []uint64{12, 11}
+		if !reflect.DeepEqual(got.Indexes, want) {
+			t.Fatalf("Indexes = %v, want %v", got.Indexes, want)
+		}
+	})
 }
