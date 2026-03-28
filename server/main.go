@@ -13,6 +13,7 @@ import (
 	"merkle-log/server/internal/api"
 	"merkle-log/server/internal/eventread"
 	"merkle-log/server/internal/index"
+	"merkle-log/server/internal/proofsvc"
 
 	"github.com/transparency-dev/tessera"
 	"github.com/transparency-dev/tessera/storage/posix"
@@ -75,7 +76,8 @@ func main() {
 
 	// 2. Setup Handlers
 	er := eventread.New(logReader)
-	h := api.NewHandler(appender, indexer, logReader, er)
+	ps := proofsvc.New(logReader)
+	h := api.NewHandler(appender, indexer, er, ps)
 	h.SetDevMode(*devMode)
 	mux := http.NewServeMux()
 

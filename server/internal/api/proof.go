@@ -1,17 +1,11 @@
 package api
 
 import (
-	"context"
-	"encoding/hex"
 	"errors"
-	"fmt"
 	"net/http"
-	"os"
 	"strconv"
 
-	"merkle-log/server/internal/logread"
-
-	tclient "github.com/transparency-dev/tessera/client"
+	"merkle-log/server/internal/proofsvc"
 )
 
 func (h *Handler) GetProof(w http.ResponseWriter, r *http.Request) {
@@ -26,42 +20,21 @@ func (h *Handler) GetProof(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Checkpoint pubblicato -> tree size "commit-tato"
-	cpRaw, cp, err := logread.ReadPublishedCheckpoint(r.Context(), h.reader)
+	resp, err := h.proofService.InclusionProof(r.Context(), idx)
 	if err != nil {
-		http.Error(w, "Checkpoint not available", http.StatusServiceUnavailable)
-		return
-	}
-
-	if idx >= cp.Size {
-		http.Error(w, "Index out of range", http.StatusNotFound)
-		return
-	}
-
-	pb, err := tclient.NewProofBuilder(r.Context(), cp.Size, h.tileFetcher())
-	if err != nil {
-		http.Error(w, "Failed to init proof builder", http.StatusInternalServerError)
-		return
-	}
-
-	hashes, err := pb.InclusionProof(r.Context(), idx)
-	if err != nil {
+		if errors.Is(err, proofsvc.ErrCheckpointUnavailable) {
+			http.Error(w, "Checkpoint not available", http.StatusServiceUnavailable)
+			return
+		}
+		if errors.Is(err, proofsvc.ErrIndexOutOfRange) {
+			http.Error(w, "Index out of range", http.StatusNotFound)
+			return
+		}
 		http.Error(w, "Failed to build proof", http.StatusInternalServerError)
 		return
 	}
 
-	proofHex := make([]string, len(hashes))
-	for i := range hashes {
-		proofHex[i] = hex.EncodeToString(hashes[i])
-	}
-
-	jsonResponse(w, map[string]any{
-		"log_index":  idx,
-		"tree_size":  cp.Size,
-		"root_hash":  hex.EncodeToString(cp.Hash),
-		"checkpoint": string(cpRaw),
-		"proof":      proofHex,
-	})
+	jsonResponse(w, resp)
 }
 
 func (h *Handler) GetConsistencyProof(w http.ResponseWriter, r *http.Request) {
@@ -72,12 +45,12 @@ func (h *Handler) GetConsistencyProof(w http.ResponseWriter, r *http.Request) {
 
 	from, err := parseUintQuery(r, "from")
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Invalid from: %v", err), http.StatusBadRequest)
+		http.Error(w, "Invalid from: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 	to, err := parseUintQuery(r, "to")
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Invalid to: %v", err), http.StatusBadRequest)
+		http.Error(w, "Invalid to: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 	if from > to {
@@ -85,73 +58,31 @@ func (h *Handler) GetConsistencyProof(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, cp, err := logread.ReadPublishedCheckpoint(r.Context(), h.reader)
+	resp, err := h.proofService.ConsistencyProof(r.Context(), from, to)
 	if err != nil {
-		http.Error(w, "Checkpoint not available", http.StatusServiceUnavailable)
-		return
-	}
-	if to > cp.Size {
-		http.Error(w, "Requested 'to' size is beyond published checkpoint", http.StatusBadRequest)
-		return
-	}
-
-	pb, err := tclient.NewProofBuilder(r.Context(), cp.Size, h.tileFetcher())
-	if err != nil {
-		http.Error(w, "Failed to init proof builder", http.StatusInternalServerError)
-		return
-	}
-
-	hashes, err := pb.ConsistencyProof(r.Context(), from, to)
-	if err != nil {
+		if errors.Is(err, proofsvc.ErrCheckpointUnavailable) {
+			http.Error(w, "Checkpoint not available", http.StatusServiceUnavailable)
+			return
+		}
+		if errors.Is(err, proofsvc.ErrSizeOutOfRange) {
+			http.Error(w, "Requested 'to' size is beyond published checkpoint", http.StatusBadRequest)
+			return
+		}
 		http.Error(w, "Failed to build consistency proof", http.StatusInternalServerError)
 		return
 	}
 
-	proofHex := make([]string, len(hashes))
-	for i := range hashes {
-		proofHex[i] = hex.EncodeToString(hashes[i])
-	}
-
-	jsonResponse(w, map[string]any{
-		"from_tree_size": from,
-		"to_tree_size":   to,
-		"proof":          proofHex,
-	})
+	jsonResponse(w, resp)
 }
 
 func parseUintQuery(r *http.Request, key string) (uint64, error) {
 	raw := r.URL.Query().Get(key)
 	if raw == "" {
-		return 0, fmt.Errorf("missing query param '%s'", key)
+		return 0, strconv.ErrSyntax
 	}
 	v, err := strconv.ParseUint(raw, 10, 64)
 	if err != nil {
 		return 0, err
 	}
 	return v, nil
-}
-
-// tileFetcher returns a TileFetcherFunc compatible with tessera client proof builder.
-// If partial tiles are unavailable, it falls back to the corresponding full tile.
-func (h *Handler) tileFetcher() func(ctx context.Context, level, index uint64, p uint8) ([]byte, error) {
-	return func(ctx context.Context, level, index uint64, p uint8) ([]byte, error) {
-		b, err := h.reader.ReadTile(ctx, level, index, p)
-		if err == nil {
-			return b, nil
-		}
-		if p != 0 {
-			b2, err2 := h.reader.ReadTile(ctx, level, index, 0)
-			if err2 == nil {
-				return b2, nil
-			}
-			if errors.Is(err2, os.ErrNotExist) {
-				return nil, os.ErrNotExist
-			}
-			return nil, err2
-		}
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, os.ErrNotExist
-		}
-		return nil, err
-	}
 }
