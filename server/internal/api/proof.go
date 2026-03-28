@@ -14,33 +14,6 @@ import (
 	tclient "github.com/transparency-dev/tessera/client"
 )
 
-func (h *Handler) GetEntry(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed. Only GET", http.StatusMethodNotAllowed)
-		return
-	}
-
-	idx, err := parseIndexFromPath(r.URL.Path, "/get-entry/")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	entry, err := h.readEntryByIndex(r.Context(), idx)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			http.Error(w, "Entry not found", http.StatusNotFound)
-			return
-		}
-		http.Error(w, "Failed to read entry", http.StatusInternalServerError)
-		return
-	}
-
-	// Se le tue entry sono JSON, ok. Altrimenti usa application/octet-stream.
-	w.Header().Set("Content-Type", "application/json")
-	_, _ = w.Write(entry)
-}
-
 func (h *Handler) GetProof(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed. Only GET", http.StatusMethodNotAllowed)

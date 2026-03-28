@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -10,7 +9,6 @@ import (
 	"strings"
 
 	"merkle-log/server/internal/hashutil"
-	"merkle-log/server/internal/logread"
 )
 
 func parseIndexFromPath(path, prefix string) (uint64, error) {
@@ -34,14 +32,4 @@ func jsonResponse(w http.ResponseWriter, data any) {
 	if err := json.NewEncoder(w).Encode(data); err != nil {
 		log.Printf("jsonResponse encode error: %v", err)
 	}
-}
-
-// readEntryByIndex keeps the handler-facing entry lookup API.
-// The protocol-level read path is centralized in internal/logread.
-func (h *Handler) readEntryByIndex(ctx context.Context, idx uint64) ([]byte, error) {
-	size, err := logread.PublishedTreeSize(ctx, h.reader)
-	if err != nil {
-		return nil, err
-	}
-	return logread.ReadLogEntryByIndex(ctx, h.reader, size, idx)
 }

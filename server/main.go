@@ -11,6 +11,7 @@ import (
 
 	"merkle-log/server/internal/anchor"
 	"merkle-log/server/internal/api"
+	"merkle-log/server/internal/eventread"
 	"merkle-log/server/internal/index"
 
 	"github.com/transparency-dev/tessera"
@@ -73,7 +74,8 @@ func main() {
 	anchorWorker := initAnchorWorker(ctx, logReader, *anchorFile, *anchorInterval)
 
 	// 2. Setup Handlers
-	h := api.NewHandler(appender, indexer, logReader)
+	er := eventread.New(logReader)
+	h := api.NewHandler(appender, indexer, logReader, er)
 	h.SetDevMode(*devMode)
 	mux := http.NewServeMux()
 
