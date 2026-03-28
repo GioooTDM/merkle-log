@@ -32,9 +32,9 @@
 
     <section class="card proof-step active" id="step1">
       <h3>1. Selezione Documento</h3>
-      <div id="dropzone" class="dropzone" style="border: 2px dashed #ccc; padding: 20px; text-align: center; cursor: pointer;" tabindex="0" role="button" aria-label="Seleziona documento PDF">
-        <p id="dropzoneText">Clicca qui per selezionare il PDF da verificare</p>
-        <input type="file" id="fileInput" hidden accept="application/pdf">
+      <div id="dropzone" class="dropzone" style="border: 2px dashed #ccc; padding: 20px; text-align: center; cursor: pointer;" tabindex="0" role="button" aria-label="Seleziona un documento da verificare">
+        <p id="dropzoneText">Clicca qui per selezionare il documento da verificare</p>
+        <input type="file" id="fileInput" hidden>
       </div>
       <div id="docResult" style="display:none; margin-top:10px;">
         <span class="label-small">Hash documento calcolato in locale (SHA-256):</span>
@@ -169,7 +169,7 @@
       btnGetProof.disabled = true;
     }
 
-    // --- STEP 1: Calcolo Hash PDF ---
+    // --- STEP 1: Calcolo hash documento ---
     dropzone.addEventListener('click', () => fileInput.click());
     dropzone.addEventListener('keydown', (e) => {
       if (e.key === "Enter" || e.key === " ") fileInput.click();

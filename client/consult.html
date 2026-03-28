@@ -40,7 +40,7 @@
           <select id="filterIssuer" class="form-control"></select>
         </div>
         <div class="form-group">
-          <label for="filterUid">ID Documento (UID)</label>
+          <label for="filterUid">ID Documento</label>
           <input type="text" id="filterUid" class="form-control" placeholder="Es. CERTIFICATO/2026/2150">
         </div>
         <div class="form-group">
@@ -325,7 +325,7 @@
 
         if (!issuerEntityID && !docID && !dateFrom && !dateTo) {
           this.renderTable([]);
-          DOM.resultCount.innerText = "Seleziona un ente oppure inserisci doc_id o data per cercare";
+          DOM.resultCount.innerText = "Seleziona un ente oppure inserisci un ID documento o una data per cercare";
           return;
         }
 
