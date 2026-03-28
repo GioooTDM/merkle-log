@@ -22,6 +22,9 @@
 
     .action-link { color: var(--primary); text-decoration: none; font-weight: bold; font-size: 0.85rem; }
     .action-link:hover { text-decoration: underline; }
+    .pagination-bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 16px; }
+    .pagination-info { font-size: 0.85rem; color: var(--muted); }
+    .pagination-actions { display: flex; gap: 10px; }
   </style>
 </head>
 
@@ -61,7 +64,7 @@
     <section class="card">
       <div style="display: flex; justify-content: space-between; align-items: center;">
         <h3>Risultati</h3>
-        <span class="muted" style="font-size: 0.85rem;" id="resultCount">Imposta almeno un filtro e premi “Applica Filtri”</span>
+        <span class="muted" style="font-size: 0.85rem;" id="resultCount">Caricamento ultimi eventi notarizzati...</span>
       </div>
 
       <div class="table-responsive">
@@ -79,11 +82,19 @@
           <tbody id="resultsBody">
             <tr>
               <td colspan="6" style="text-align:center; padding: 20px; color: #777;">
-                Nessuna ricerca eseguita.
+                Caricamento in corso...
               </td>
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <div class="pagination-bar" id="paginationBar" hidden>
+        <span class="pagination-info" id="paginationInfo">Pagina 1 di 1</span>
+        <div class="pagination-actions">
+          <button class="btn" id="btnPrevPage" type="button">Precedente</button>
+          <button class="btn" id="btnNextPage" type="button">Successiva</button>
+        </div>
       </div>
     </section>
 
@@ -101,12 +112,10 @@
       normalizeHex,
       formatDate,
       fetchJson,
-      fetchText,
-      parseCheckpointSize,
     } from "./common.js";
 
     const Config = {
-      INITIAL_LATEST_LIMIT: 5
+      PAGE_SIZE: 10
     };
 
     const DOM = {
@@ -114,10 +123,21 @@
       btnSearch: el('btnSearch'),
       resultsBody: el('resultsBody'),
       resultCount: el('resultCount'),
+      paginationBar: el('paginationBar'),
+      paginationInfo: el('paginationInfo'),
+      btnPrevPage: el('btnPrevPage'),
+      btnNextPage: el('btnNextPage'),
       filterIssuerSelect: el('filterIssuer'),
       filterUidInput: el('filterUid'),
       filterDateFromInput: el('filterDateFrom'),
       filterDateToInput: el('filterDateTo')
+    };
+
+    const State = {
+      currentPage: 1,
+      totalCount: 0,
+      lastMode: "latest",
+      lastQuery: null
     };
 
     const Utils = {
@@ -137,36 +157,22 @@
     };
 
     const API = {
-      async getCheckpointSize() {
-        const text = await fetchText(`${API_BASE}/checkpoint`, { cache: "no-store" });
-        return parseCheckpointSize(text);
+      withPagingParams(qs, page, pageSize) {
+        qs.set("order", "desc");
+        qs.set("limit", String(pageSize));
+        qs.set("offset", String((page - 1) * pageSize));
+        return qs;
       },
 
-      async getEntryByIndex(index) {
-        const res = await fetch(`${API_BASE}/get-entry/${index}`);
-        if (!res.ok) return null;
-        const text = await res.text();
-        try { return JSON.parse(text); } catch { return null; }
-      },
-
-      async searchByDocID(docID) {
-        const url = `${API_BASE}/get-entries-by-docid?doc_id=${encodeURIComponent(docID)}`;
+      async searchEntries({ docID, issuerEntityID, dateFrom, dateTo, page, pageSize }) {
+        const qs = new URLSearchParams();
+        if (docID) qs.set("doc_id", docID);
+        if (issuerEntityID) qs.set("issuer_entity_id", issuerEntityID);
+        if (dateFrom) qs.set("date_from", dateFrom);
+        if (dateTo) qs.set("date_to", dateTo);
+        this.withPagingParams(qs, page, pageSize);
+        const url = `${API_BASE}/entries?${qs.toString()}`;
         return fetchJson(url);
-      },
-
-      async searchByIssuer(issuerEntityID, dateFrom, dateTo) {
-        const qs = new URLSearchParams();
-        qs.set("issuer_entity_id", issuerEntityID);
-        if (dateFrom) qs.set("date_from", dateFrom);
-        if (dateTo) qs.set("date_to", dateTo);
-        return fetchJson(`${API_BASE}/get-entries-by-issuer?${qs.toString()}`);
-      },
-
-      async searchByDate(dateFrom, dateTo) {
-        const qs = new URLSearchParams();
-        if (dateFrom) qs.set("date_from", dateFrom);
-        if (dateTo) qs.set("date_to", dateTo);
-        return fetchJson(`${API_BASE}/get-entries-by-date?${qs.toString()}`);
       }
     };
 
@@ -190,6 +196,8 @@
       bindEvents() {
         DOM.btnSearch.addEventListener('click', () => this.handleSearch());
         DOM.btnClearFilters.addEventListener('click', () => this.clearFilters());
+        DOM.btnPrevPage.addEventListener('click', () => this.changePage(-1));
+        DOM.btnNextPage.addEventListener('click', () => this.changePage(1));
         DOM.filterUidInput.addEventListener('keydown', (e) => {
           if (e.key === "Enter") this.handleSearch();
         });
@@ -200,6 +208,7 @@
         DOM.filterUidInput.value = "";
         DOM.filterDateFromInput.value = "";
         DOM.filterDateToInput.value = "";
+        this.loadInitialEvents(1);
       },
 
       rowFromEvent(ev, index, fallbackDocId = "") {
@@ -218,15 +227,6 @@
         };
       },
 
-      sortRowsNewestFirst(rows) {
-        rows.sort((a, b) => {
-          const av = Number(a.version), bv = Number(b.version);
-          const avOk = Number.isFinite(av), bvOk = Number.isFinite(bv);
-          if (avOk && bvOk && av !== bv) return bv - av;
-          return Number(b.index) - Number(a.index);
-        });
-      },
-
       rowsFromApiResponse(apiResp) {
         const docId = apiResp?.doc_id;
         const idxs = Array.isArray(apiResp?.indexes) ? apiResp.indexes : [];
@@ -239,50 +239,16 @@
           const ev = parsed[i];
           rows.push(this.rowFromEvent(ev, idxs[i], docId));
         }
-
-        this.sortRowsNewestFirst(rows);
         return rows;
       },
 
-      filterRowsByDate(rows, dateFrom, dateTo) {
-        if (!dateFrom && !dateTo) return rows;
-
-        const fromTs = dateFrom ? Date.parse(`${dateFrom}T00:00:00Z`) : null;
-        const toTsExclusive = dateTo ? Date.parse(`${dateTo}T00:00:00Z`) + (24 * 60 * 60 * 1000) : null;
-
-        return rows.filter((row) => {
-          const ts = Date.parse(row?.dateRaw || "");
-          if (!Number.isFinite(ts)) return false;
-          if (fromTs !== null && ts < fromTs) return false;
-          if (toTsExclusive !== null && ts >= toTsExclusive) return false;
-          return true;
-        });
-      },
-
-      filterRowsByIssuer(rows, issuerEntityID) {
-        if (!issuerEntityID) return rows;
-        return rows.filter((row) => row.issuerEntityID === issuerEntityID);
-      },
-
-      async loadLatestNotarizedEvents(limit = 5) {
-        const size = await API.getCheckpointSize();
-        if (!Number.isFinite(size) || size <= 0) return [];
-
-        const out = [];
-        for (let idx = size - 1; idx >= 0 && out.length < limit; idx--) {
-          const ev = await API.getEntryByIndex(idx);
-          if (!ev || typeof ev !== "object") continue;
-          out.push(this.rowFromEvent(ev, idx));
-        }
-        return out;
-      },
-
-      renderTable(rows) {
+      renderTable(rows, totalCount = rows.length) {
         DOM.resultsBody.innerHTML = "";
 
         if (!rows || rows.length === 0) {
           DOM.resultsBody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 20px; color: #777;">Nessun documento trovato con i filtri selezionati.</td></tr>`;
           DOM.resultCount.innerText = "0 risultati";
+          this.renderPagination(0);
           return;
         }
 
@@ -302,7 +268,28 @@
           DOM.resultsBody.appendChild(tr);
         });
 
-        DOM.resultCount.innerText = `Mostrando ${rows.length} risultati`;
+        const start = ((State.currentPage - 1) * Config.PAGE_SIZE) + 1;
+        const end = start + rows.length - 1;
+        DOM.resultCount.innerText = `Mostrando ${start}-${end} di ${totalCount} risultati`;
+        this.renderPagination(totalCount);
+      },
+
+      renderPagination(totalCount) {
+        State.totalCount = totalCount;
+        const totalPages = totalCount > 0 ? Math.ceil(totalCount / Config.PAGE_SIZE) : 0;
+        const hasPages = totalPages > 1;
+
+        DOM.paginationBar.hidden = !hasPages;
+        if (!hasPages) {
+          DOM.paginationInfo.textContent = "Pagina 1 di 1";
+          DOM.btnPrevPage.disabled = true;
+          DOM.btnNextPage.disabled = true;
+          return;
+        }
+
+        DOM.paginationInfo.textContent = `Pagina ${State.currentPage} di ${totalPages}`;
+        DOM.btnPrevPage.disabled = State.currentPage <= 1;
+        DOM.btnNextPage.disabled = State.currentPage >= totalPages;
       },
 
       setSearchLoading(isLoading) {
@@ -310,42 +297,56 @@
         DOM.btnSearch.disabled = isLoading;
       },
 
+      getCurrentFilters() {
+        return {
+          issuerEntityID: DOM.filterIssuerSelect.value.trim(),
+          docID: DOM.filterUidInput.value.trim(),
+          dateFrom: DOM.filterDateFromInput.value.trim(),
+          dateTo: DOM.filterDateToInput.value.trim(),
+        };
+      },
+
+      async fetchSearchPage(page = 1) {
+        const { issuerEntityID, docID, dateFrom, dateTo } = State.lastQuery;
+        return API.searchEntries({
+          docID,
+          issuerEntityID,
+          dateFrom,
+          dateTo,
+          page,
+          pageSize: Config.PAGE_SIZE,
+        });
+      },
+
       showTableError(prefix, err) {
         DOM.resultsBody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 20px; color: #b00020;">
           ${prefix}: ${safeStr(err?.message, "richiesta fallita")}
         </td></tr>`;
         DOM.resultCount.innerText = "Errore";
+        this.renderPagination(0);
       },
 
-      async handleSearch() {
-        const issuerEntityID = DOM.filterIssuerSelect.value.trim();
-        const docID = DOM.filterUidInput.value.trim();
-        const dateFrom = DOM.filterDateFromInput.value.trim();
-        const dateTo = DOM.filterDateToInput.value.trim();
+      async handleSearch(page = 1) {
+        const { issuerEntityID, docID, dateFrom, dateTo } = this.getCurrentFilters();
 
         if (!issuerEntityID && !docID && !dateFrom && !dateTo) {
-          this.renderTable([]);
-          DOM.resultCount.innerText = "Seleziona un ente oppure inserisci un ID documento o una data per cercare";
+          State.lastMode = "latest";
+          State.lastQuery = { issuerEntityID: "", docID: "", dateFrom: "", dateTo: "" };
+          State.currentPage = page;
+          await this.loadInitialEvents(page);
           return;
         }
 
+        State.lastMode = "search";
+        State.lastQuery = { issuerEntityID, docID, dateFrom, dateTo };
+        State.currentPage = page;
         this.setSearchLoading(true);
 
         try {
-          let rows = [];
-          if (docID) {
-            const resp = await API.searchByDocID(docID);
-            rows = this.rowsFromApiResponse(resp);
-            rows = this.filterRowsByIssuer(rows, issuerEntityID);
-            rows = this.filterRowsByDate(rows, dateFrom, dateTo);
-          } else if (issuerEntityID) {
-            const resp = await API.searchByIssuer(issuerEntityID, dateFrom, dateTo);
-            rows = this.rowsFromApiResponse(resp);
-          } else {
-            const resp = await API.searchByDate(dateFrom, dateTo);
-            rows = this.rowsFromApiResponse(resp);
-          }
-          this.renderTable(rows);
+          const resp = await this.fetchSearchPage(page);
+          const rows = this.rowsFromApiResponse(resp);
+          const totalCount = Number(resp?.total_count ?? rows.length);
+          this.renderTable(rows, totalCount);
         } catch (err) {
           console.error(err);
           this.showTableError("Errore", err);
@@ -354,14 +355,29 @@
         }
       },
 
-      async loadInitialEvents() {
+      async changePage(delta) {
+        const nextPage = State.currentPage + delta;
+        const totalPages = State.totalCount > 0 ? Math.ceil(State.totalCount / Config.PAGE_SIZE) : 1;
+        if (nextPage < 1 || nextPage > totalPages) return;
+        if ((State.lastMode === "search" || State.lastMode === "latest") && State.lastQuery) {
+          await this.handleSearch(nextPage);
+          return;
+        }
+      },
+
+      async loadInitialEvents(page = 1) {
         try {
-          DOM.resultCount.innerText = "Caricamento ultimi eventi...";
-          const rows = await this.loadLatestNotarizedEvents(Config.INITIAL_LATEST_LIMIT);
-          this.renderTable(rows);
-          DOM.resultCount.innerText = rows.length > 0
-            ? `Ultimi ${rows.length} eventi notarizzati`
-            : "Nessun evento notarizzato disponibile";
+          State.lastMode = "latest";
+          State.lastQuery = { issuerEntityID: "", docID: "", dateFrom: "", dateTo: "" };
+          State.currentPage = page;
+          DOM.resultCount.innerText = "Caricamento eventi notarizzati...";
+          const resp = await this.fetchSearchPage(page);
+          const rows = this.rowsFromApiResponse(resp);
+          const totalCount = Number(resp?.total_count ?? rows.length);
+          this.renderTable(rows, totalCount);
+          if (totalCount === 0) {
+            DOM.resultCount.innerText = "Nessun evento notarizzato disponibile";
+          }
         } catch (err) {
           console.error(err);
           this.showTableError("Errore caricamento iniziale", err);

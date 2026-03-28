@@ -3,11 +3,12 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
-	"sort"
+	"strconv"
 	"strings"
 	"time"
+
+	"merkle-log/server/internal/index"
 )
 
 func requireQueryParam(w http.ResponseWriter, r *http.Request, key, missingMsg string) (string, bool) {
@@ -17,6 +18,116 @@ func requireQueryParam(w http.ResponseWriter, r *http.Request, key, missingMsg s
 		return "", false
 	}
 	return value, true
+}
+
+type entriesQuery struct {
+	docID          string
+	issuerEntityID string
+	dateFromRaw    string
+	dateToRaw      string
+	fromInclusive  time.Time
+	toExclusive    time.Time
+	limit          int
+	offset         int
+	order          string
+}
+
+type entriesResponse struct {
+	DocID          string            `json:"doc_id,omitempty"`
+	IssuerEntityID string            `json:"issuer_entity_id,omitempty"`
+	DateFrom       string            `json:"date_from,omitempty"`
+	DateTo         string            `json:"date_to,omitempty"`
+	Indexes        []uint64          `json:"indexes"`
+	Count          int               `json:"count"`
+	TotalCount     int               `json:"total_count"`
+	Offset         int               `json:"offset"`
+	Limit          int               `json:"limit"`
+	HasMore        bool              `json:"has_more"`
+	Entries        []json.RawMessage `json:"entries"`
+}
+
+func parseEntriesQuery(r *http.Request) (entriesQuery, error) {
+	q := r.URL.Query()
+	out := entriesQuery{
+		docID:          strings.TrimSpace(q.Get("doc_id")),
+		issuerEntityID: strings.TrimSpace(q.Get("issuer_entity_id")),
+		dateFromRaw:    strings.TrimSpace(q.Get("date_from")),
+		dateToRaw:      strings.TrimSpace(q.Get("date_to")),
+		order:          strings.ToLower(strings.TrimSpace(q.Get("order"))),
+	}
+
+	if out.order == "" {
+		out.order = "desc"
+	}
+	if out.order != "asc" && out.order != "desc" {
+		return entriesQuery{}, fmt.Errorf("invalid order: must be asc or desc")
+	}
+
+	if rawOffset := strings.TrimSpace(q.Get("offset")); rawOffset != "" {
+		offset, err := strconv.Atoi(rawOffset)
+		if err != nil || offset < 0 {
+			return entriesQuery{}, fmt.Errorf("invalid offset: must be >= 0")
+		}
+		out.offset = offset
+	}
+
+	if rawLimit := strings.TrimSpace(q.Get("limit")); rawLimit != "" {
+		limit, err := strconv.Atoi(rawLimit)
+		if err != nil || limit <= 0 {
+			return entriesQuery{}, fmt.Errorf("invalid limit: must be > 0")
+		}
+		out.limit = limit
+	}
+
+	var err error
+	out.fromInclusive, err = parseISODateStart(out.dateFromRaw)
+	if err != nil {
+		return entriesQuery{}, fmt.Errorf("invalid date_from: %w", err)
+	}
+	toStart, err := parseISODateStart(out.dateToRaw)
+	if err != nil {
+		return entriesQuery{}, fmt.Errorf("invalid date_to: %w", err)
+	}
+	if !toStart.IsZero() {
+		out.toExclusive = toStart.Add(24 * time.Hour)
+	}
+	if !out.fromInclusive.IsZero() && !toStart.IsZero() && out.fromInclusive.After(toStart) {
+		return entriesQuery{}, fmt.Errorf("invalid range: date_from must be <= date_to")
+	}
+
+	return out, nil
+}
+
+func (q entriesQuery) toIndexSearchParams() index.SearchParams {
+	return index.SearchParams{
+		DocID:          q.docID,
+		IssuerEntityID: q.issuerEntityID,
+		FromInclusive:  q.fromInclusive,
+		ToExclusive:    q.toExclusive,
+		Limit:          q.limit,
+		Offset:         q.offset,
+		Order:          q.order,
+	}
+}
+
+func (q entriesQuery) toResponse(indexes []uint64, entries []json.RawMessage, totalCount int) entriesResponse {
+	limit := q.limit
+	if limit == 0 {
+		limit = len(indexes)
+	}
+	return entriesResponse{
+		DocID:          q.docID,
+		IssuerEntityID: q.issuerEntityID,
+		DateFrom:       q.dateFromRaw,
+		DateTo:         q.dateToRaw,
+		Indexes:        indexes,
+		Count:          len(entries),
+		TotalCount:     totalCount,
+		Offset:         q.offset,
+		Limit:          limit,
+		HasMore:        q.offset+len(indexes) < totalCount,
+		Entries:        entries,
+	}
 }
 
 // TODO: attenzione, ci potrebbero essere più eventi notarizzati con lo stesso doc hash. Lo stesso documento può essere notarizzato più volte in contesti diversi.
@@ -91,179 +202,27 @@ func (h *Handler) GetIndexesByDocID(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *Handler) GetEntriesByDocID(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) SearchEntries(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed. Only GET", http.StatusMethodNotAllowed)
 		return
 	}
 
-	docID, ok := requireQueryParam(w, r, "doc_id", "Missing doc_id")
-	if !ok {
+	query, err := parseEntriesQuery(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	// 1) recupera indici da DB
-	indexes, err := h.indexer.GetIndexesByDocID(docID)
+	searchResult, err := h.indexer.SearchIndexes(query.toIndexSearchParams())
 	if err != nil {
 		http.Error(w, "DB error", http.StatusInternalServerError)
 		return
 	}
-	if len(indexes) == 0 {
-		http.Error(w, "Not found", http.StatusNotFound)
-		return
-	}
 
-	// Ordine stabile: crescente (poi il client può reverse per "latest first")
-	sort.Slice(indexes, func(i, j int) bool { return indexes[i] < indexes[j] })
-
-	// 2) recupera entry dal log
-	entries := make([]json.RawMessage, 0, len(indexes))
-	okIndexes := make([]uint64, 0, len(indexes))
-
-	for _, idx := range indexes {
-		b, err := h.readEntryByIndex(r.Context(), idx)
-		if err != nil {
-			// Se vuoi essere "strict", puoi fallire subito:
-			// http.Error(w, "Failed to read entry from log", http.StatusInternalServerError); return
-			// Per ora: salta entry non leggibile
-			continue
-		}
-		if !entryMatchesDocID(b, docID) {
-			log.Printf("index mismatch: requested doc_id=%q index=%d", docID, idx)
-			continue
-		}
-		entries = append(entries, json.RawMessage(b))
-		okIndexes = append(okIndexes, idx)
-	}
-
-	if len(entries) == 0 {
-		http.Error(w, "No entries available for this doc_id", http.StatusNotFound)
-		return
-	}
-
-	// 3) response
-	jsonResponse(w, map[string]any{
-		"doc_id":  docID,
-		"indexes": okIndexes,
-		"count":   len(entries),
-		"entries": entries,
-	})
-}
-
-func (h *Handler) GetEntriesByDate(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed. Only GET", http.StatusMethodNotAllowed)
-		return
-	}
-
-	dateFrom := strings.TrimSpace(r.URL.Query().Get("date_from"))
-	dateTo := strings.TrimSpace(r.URL.Query().Get("date_to"))
-	if dateFrom == "" && dateTo == "" {
-		http.Error(w, "Missing date_from/date_to", http.StatusBadRequest)
-		return
-	}
-
-	fromStart, err := parseISODateStart(dateFrom)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Invalid date_from: %v", err), http.StatusBadRequest)
-		return
-	}
-	toStart, err := parseISODateStart(dateTo)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Invalid date_to: %v", err), http.StatusBadRequest)
-		return
-	}
-
-	var toEndExclusive time.Time
-	if !toStart.IsZero() {
-		toEndExclusive = toStart.Add(24 * time.Hour)
-	}
-	if !fromStart.IsZero() && !toStart.IsZero() && fromStart.After(toStart) {
-		http.Error(w, "Invalid range: date_from must be <= date_to", http.StatusBadRequest)
-		return
-	}
-
-	indexes, err := h.indexer.GetIndexesByRecordedAtRange(fromStart, toEndExclusive)
-	if err != nil {
-		http.Error(w, "DB error", http.StatusInternalServerError)
-		return
-	}
-	if len(indexes) == 0 {
-		http.Error(w, "Not found", http.StatusNotFound)
-		return
-	}
-
-	entries := make([]json.RawMessage, 0, len(indexes))
-	okIndexes := make([]uint64, 0, len(indexes))
-	for _, idx := range indexes {
-		b, err := h.readEntryByIndex(r.Context(), idx)
-		if err != nil {
-			continue
-		}
-		entries = append(entries, json.RawMessage(b))
-		okIndexes = append(okIndexes, idx)
-	}
-	if len(entries) == 0 {
-		http.Error(w, "No entries available for selected date range", http.StatusNotFound)
-		return
-	}
-
-	jsonResponse(w, map[string]any{
-		"date_from": dateFrom,
-		"date_to":   dateTo,
-		"indexes":   okIndexes,
-		"count":     len(entries),
-		"entries":   entries,
-	})
-}
-
-func (h *Handler) GetEntriesByIssuer(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed. Only GET", http.StatusMethodNotAllowed)
-		return
-	}
-
-	issuerEntityID, ok := requireQueryParam(w, r, "issuer_entity_id", "Missing issuer_entity_id")
-	if !ok {
-		return
-	}
-
-	dateFrom := strings.TrimSpace(r.URL.Query().Get("date_from"))
-	dateTo := strings.TrimSpace(r.URL.Query().Get("date_to"))
-
-	fromStart, err := parseISODateStart(dateFrom)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Invalid date_from: %v", err), http.StatusBadRequest)
-		return
-	}
-	toStart, err := parseISODateStart(dateTo)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Invalid date_to: %v", err), http.StatusBadRequest)
-		return
-	}
-
-	var toEndExclusive time.Time
-	if !toStart.IsZero() {
-		toEndExclusive = toStart.Add(24 * time.Hour)
-	}
-	if !fromStart.IsZero() && !toStart.IsZero() && fromStart.After(toStart) {
-		http.Error(w, "Invalid range: date_from must be <= date_to", http.StatusBadRequest)
-		return
-	}
-
-	indexes, err := h.indexer.GetIndexesByIssuerEntityID(issuerEntityID, fromStart, toEndExclusive)
-	if err != nil {
-		http.Error(w, "DB error", http.StatusInternalServerError)
-		return
-	}
-	if len(indexes) == 0 {
-		http.Error(w, "Not found", http.StatusNotFound)
-		return
-	}
-
-	entries := make([]json.RawMessage, 0, len(indexes))
-	okIndexes := make([]uint64, 0, len(indexes))
-	for _, idx := range indexes {
+	entries := make([]json.RawMessage, 0, len(searchResult.Indexes))
+	okIndexes := make([]uint64, 0, len(searchResult.Indexes))
+	for _, idx := range searchResult.Indexes {
 		raw, err := h.readEntryByIndex(r.Context(), idx)
 		if err != nil {
 			continue
@@ -271,19 +230,8 @@ func (h *Handler) GetEntriesByIssuer(w http.ResponseWriter, r *http.Request) {
 		entries = append(entries, json.RawMessage(raw))
 		okIndexes = append(okIndexes, idx)
 	}
-	if len(entries) == 0 {
-		http.Error(w, "No entries available for this issuer", http.StatusNotFound)
-		return
-	}
 
-	jsonResponse(w, map[string]any{
-		"issuer_entity_id": issuerEntityID,
-		"date_from":        dateFrom,
-		"date_to":          dateTo,
-		"indexes":          okIndexes,
-		"count":            len(entries),
-		"entries":          entries,
-	})
+	jsonResponse(w, query.toResponse(okIndexes, entries, searchResult.TotalCount))
 }
 
 func parseISODateStart(raw string) (time.Time, error) {
@@ -295,14 +243,4 @@ func parseISODateStart(raw string) (time.Time, error) {
 		return time.Time{}, err
 	}
 	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC), nil
-}
-
-func entryMatchesDocID(raw []byte, wantDocID string) bool {
-	var entry struct {
-		DocID string `json:"doc_id"`
-	}
-	if err := json.Unmarshal(raw, &entry); err != nil {
-		return false
-	}
-	return strings.TrimSpace(entry.DocID) == strings.TrimSpace(wantDocID)
 }
