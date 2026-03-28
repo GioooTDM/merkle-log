@@ -223,11 +223,11 @@ func (h *Handler) SearchEntries(w http.ResponseWriter, r *http.Request) {
 	entries := make([]json.RawMessage, 0, len(searchResult.Indexes))
 	okIndexes := make([]uint64, 0, len(searchResult.Indexes))
 	for _, idx := range searchResult.Indexes {
-		record, err := h.eventReader.ReadRecordByIndex(r.Context(), idx)
+		raw, err := h.eventReader.ReadRawByIndex(r.Context(), idx)
 		if err != nil {
 			continue
 		}
-		entries = append(entries, json.RawMessage(record.Raw))
+		entries = append(entries, json.RawMessage(raw))
 		okIndexes = append(okIndexes, idx)
 	}
 

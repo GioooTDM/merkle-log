@@ -3,21 +3,21 @@ package api
 import (
 	"context"
 
-	"merkle-log/server/internal/eventread"
+	"merkle-log/server/internal/contracts"
+	"merkle-log/server/internal/event"
 	"merkle-log/server/internal/index"
-	"merkle-log/server/internal/proofsvc"
 
 	"github.com/transparency-dev/tessera"
 )
 
 type EventReader interface {
 	ReadRawByIndex(ctx context.Context, idx uint64) ([]byte, error)
-	ReadRecordByIndex(ctx context.Context, idx uint64) (eventread.Record, error)
+	ReadEventByIndex(ctx context.Context, idx uint64) (event.PreparedEvent, error)
 }
 
 type ProofService interface {
-	InclusionProof(ctx context.Context, idx uint64) (proofsvc.InclusionProofResult, error)
-	ConsistencyProof(ctx context.Context, from, to uint64) (proofsvc.ConsistencyProofResult, error)
+	InclusionProof(ctx context.Context, idx uint64) (contracts.InclusionProof, error)
+	ConsistencyProof(ctx context.Context, from, to uint64) (contracts.ConsistencyProof, error)
 }
 
 type Handler struct {

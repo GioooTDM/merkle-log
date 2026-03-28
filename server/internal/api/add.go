@@ -111,11 +111,10 @@ func (h *Handler) resolveDocumentVersion(ctx context.Context, req event.AddEvent
 			return 0, fmt.Errorf("doc_id %q has no existing chain", req.DocID)
 		}
 
-		record, err := h.eventReader.ReadRecordByIndex(ctx, latestIndex)
+		head, err := h.eventReader.ReadEventByIndex(ctx, latestIndex)
 		if err != nil {
 			return 0, fmt.Errorf("read latest entry for doc_id %q: %w", req.DocID, err)
 		}
-		head := record.Event
 
 		if strings.TrimSpace(head.DocID) != req.DocID {
 			return 0, fmt.Errorf("doc_id %q latest entry mismatch", req.DocID)

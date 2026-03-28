@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 
+	"merkle-log/server/internal/contracts"
 	"merkle-log/server/internal/logread"
 
 	"github.com/transparency-dev/tessera"
@@ -19,20 +20,6 @@ var (
 	ErrSizeOutOfRange        = errors.New("requested size is beyond published checkpoint")
 )
 
-type InclusionProofResult struct {
-	LogIndex   uint64   `json:"log_index"`
-	TreeSize   uint64   `json:"tree_size"`
-	RootHash   string   `json:"root_hash"`
-	Checkpoint string   `json:"checkpoint"`
-	Proof      []string `json:"proof"`
-}
-
-type ConsistencyProofResult struct {
-	FromTreeSize uint64   `json:"from_tree_size"`
-	ToTreeSize   uint64   `json:"to_tree_size"`
-	Proof        []string `json:"proof"`
-}
-
 type Service struct {
 	reader tessera.LogReader
 }
@@ -41,26 +28,26 @@ func New(reader tessera.LogReader) *Service {
 	return &Service{reader: reader}
 }
 
-func (s *Service) InclusionProof(ctx context.Context, idx uint64) (InclusionProofResult, error) {
+func (s *Service) InclusionProof(ctx context.Context, idx uint64) (contracts.InclusionProof, error) {
 	cpRaw, cp, err := logread.ReadPublishedCheckpoint(ctx, s.reader)
 	if err != nil {
-		return InclusionProofResult{}, fmt.Errorf("%w: %v", ErrCheckpointUnavailable, err)
+		return contracts.InclusionProof{}, fmt.Errorf("%w: %v", ErrCheckpointUnavailable, err)
 	}
 	if idx >= cp.Size {
-		return InclusionProofResult{}, ErrIndexOutOfRange
+		return contracts.InclusionProof{}, ErrIndexOutOfRange
 	}
 
 	pb, err := tclient.NewProofBuilder(ctx, cp.Size, s.tileFetcher())
 	if err != nil {
-		return InclusionProofResult{}, err
+		return contracts.InclusionProof{}, err
 	}
 
 	hashes, err := pb.InclusionProof(ctx, idx)
 	if err != nil {
-		return InclusionProofResult{}, err
+		return contracts.InclusionProof{}, err
 	}
 
-	return InclusionProofResult{
+	return contracts.InclusionProof{
 		LogIndex:   idx,
 		TreeSize:   cp.Size,
 		RootHash:   hex.EncodeToString(cp.Hash),
@@ -69,26 +56,26 @@ func (s *Service) InclusionProof(ctx context.Context, idx uint64) (InclusionProo
 	}, nil
 }
 
-func (s *Service) ConsistencyProof(ctx context.Context, from, to uint64) (ConsistencyProofResult, error) {
+func (s *Service) ConsistencyProof(ctx context.Context, from, to uint64) (contracts.ConsistencyProof, error) {
 	_, cp, err := logread.ReadPublishedCheckpoint(ctx, s.reader)
 	if err != nil {
-		return ConsistencyProofResult{}, fmt.Errorf("%w: %v", ErrCheckpointUnavailable, err)
+		return contracts.ConsistencyProof{}, fmt.Errorf("%w: %v", ErrCheckpointUnavailable, err)
 	}
 	if to > cp.Size {
-		return ConsistencyProofResult{}, ErrSizeOutOfRange
+		return contracts.ConsistencyProof{}, ErrSizeOutOfRange
 	}
 
 	pb, err := tclient.NewProofBuilder(ctx, cp.Size, s.tileFetcher())
 	if err != nil {
-		return ConsistencyProofResult{}, err
+		return contracts.ConsistencyProof{}, err
 	}
 
 	hashes, err := pb.ConsistencyProof(ctx, from, to)
 	if err != nil {
-		return ConsistencyProofResult{}, err
+		return contracts.ConsistencyProof{}, err
 	}
 
-	return ConsistencyProofResult{
+	return contracts.ConsistencyProof{
 		FromTreeSize: from,
 		ToTreeSize:   to,
 		Proof:        encodeHashes(hashes),

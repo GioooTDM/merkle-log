@@ -9,11 +9,6 @@ import (
 	"github.com/transparency-dev/tessera"
 )
 
-type Record struct {
-	Raw   []byte
-	Event event.PreparedEvent
-}
-
 type Reader struct {
 	log tessera.LogReader
 }
@@ -30,19 +25,16 @@ func (r *Reader) ReadRawByIndex(ctx context.Context, idx uint64) ([]byte, error)
 	return logread.ReadLogEntryByIndex(ctx, r.log, size, idx)
 }
 
-func (r *Reader) ReadRecordByIndex(ctx context.Context, idx uint64) (Record, error) {
+func (r *Reader) ReadEventByIndex(ctx context.Context, idx uint64) (event.PreparedEvent, error) {
 	raw, err := r.ReadRawByIndex(ctx, idx)
 	if err != nil {
-		return Record{}, err
+		return event.PreparedEvent{}, err
 	}
 
 	parsed, err := event.DecodePreparedEvent(raw)
 	if err != nil {
-		return Record{}, err
+		return event.PreparedEvent{}, err
 	}
 
-	return Record{
-		Raw:   raw,
-		Event: parsed,
-	}, nil
+	return parsed, nil
 }
