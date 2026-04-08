@@ -8,10 +8,8 @@ Esegui da `server/`:
 ```bash
 export LOG_PRIVATE_KEY='PRIVATE+KEY+example.com/log/testdata+33d7b496+AeymY/SZAX0jZcJ8enZ5FY1Dz+wTML2yWSkK+9DSF3eg'
 export LOG_PUBLIC_KEY='example.com/log/testdata+33d7b496+AeHTu4Q3hEIMHNqc6fASMsq3rKNx280NI+oO5xCFkkSx'
-export LOG_DIR="$HOME/tessera-log"
-mkdir -p "$LOG_DIR"
 
-go run . --storage_dir="$LOG_DIR" --listen=":2025"
+go run . --storage_dir="./tessera-log" --listen=":2025"
 ```
 
 ## Parametri principali
@@ -51,5 +49,7 @@ Comportamento:
 - Se punti a un log diverso, conviene ripartire con un DB indice coerente.
 
 ## Troubleshooting
-- Sotto carico può comparire `database is locked (SQLITE_BUSY)`.
-- Causa nota: concorrenza scritture SQLite non ancora ottimizzata (WAL/retry/backoff).
+- Sotto carico può comparire `database is locked (SQLITE_BUSY)`. Causa nota: concorrenza scritture SQLite non ancora ottimizzata (WAL/retry/backoff).
+- Se cambi `cwd`, cambia anche il path del file `notary_index.db`.
+- Se punti il server a un log Tessera diverso mantenendo un indice vecchio, l'avvio fallisce per disallineamento.
+

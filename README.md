@@ -3,7 +3,7 @@
 Progetto di notarizzazione eventi/documenti basato su transparency log Merkle.
 
 ## Struttura repository
-- `server/`: API HTTP + integrazione Tessera + indice SQLite + anchoring su file JSONL
+- `server/`: API HTTP + integrazione Tessera + indice SQLite + anchoring su file di testo append-only
 - `client/`: pagine HTML/JS per usare il sistema da browser
 - `seed_log/`: CLI che genera PDF/eventi di esempio e li invia a `/add`
 - `hammer/`: CLI per stress test di `POST /add`
