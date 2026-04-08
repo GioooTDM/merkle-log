@@ -301,6 +301,7 @@ nav a:hover {
   width: 60px;
   height: 60px;
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: center;
   border-radius: 10px;
