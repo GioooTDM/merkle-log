@@ -1,15 +1,15 @@
 # merkle-log
 
-Progetto di notarizzazione eventi/documenti basato su transparency log Merkle.
+Event/document notarization project based on a Merkle transparency log.
 
-## Struttura repository
-- `server/`: API HTTP + integrazione Tessera + indice SQLite + anchoring su file di testo append-only
-- `client/`: pagine HTML/JS per usare il sistema da browser
-- `seed_log/`: CLI che genera PDF/eventi di esempio e li invia a `/add`
-- `hammer/`: CLI per stress test di `POST /add`
+## Repository structure
+- `server/`: HTTP API + Tessera integration + SQLite index + append-only text-file anchoring
+- `client/`: HTML/JS pages for using the system from a browser
+- `seed_log/`: CLI that generates sample PDFs/events and sends them to `/add`
+- `hammer/`: CLI for stress-testing `POST /add`
 
-## Quick start locale
-1. Avvia il server
+## Local quick start
+1. Start the server
 
 ```bash
 cd server
@@ -17,15 +17,15 @@ export LOG_PRIVATE_KEY='PRIVATE+KEY+example.com/log/testdata+33d7b496+AeymY/SZAX
 go run . --storage_dir="./tessera-log" --listen=":2025"
 ```
 
-2. Avvia il client
+2. Start the client
 
 ```bash
 cd client
 python3 -m http.server 8080
 ```
 
-Apri `http://localhost:8080/index.html`.
+Open `http://localhost:8080/index.html`.
 
-## Note
-- Il file indice SQLite (`notary_index.db`) dipende dalla directory di esecuzione del server.
-- In condizioni di alto parallelismo possono emergere `SQLITE_BUSY` durante la scrittura dell'indice.
+## Notes
+- The SQLite index file (`notary_index.db`) depends on the server process working directory.
+- Under high parallelism, `SQLITE_BUSY` errors may appear while writing the index.

@@ -1,9 +1,9 @@
 # Server (`/server`)
 
-Backend di notarizzazione basato su Tessera (log append-only Merkle) con indice SQLite di supporto per query applicative.
+Notarization backend based on Tessera, an append-only Merkle log, with a supporting SQLite index for application-level queries.
 
-## Avvio rapido
-Esegui da `server/`:
+## Quick start
+Run from `server/`:
 
 ```bash
 export LOG_PRIVATE_KEY='PRIVATE+KEY+example.com/log/testdata+33d7b496+AeymY/SZAX0jZcJ8enZ5FY1Dz+wTML2yWSkK+9DSF3eg'
@@ -12,15 +12,15 @@ export LOG_PUBLIC_KEY='example.com/log/testdata+33d7b496+AeHTu4Q3hEIMHNqc6fASMsq
 go run . --storage_dir="./tessera-log" --listen=":2025"
 ```
 
-## Parametri principali
-- `--storage_dir` (obbligatorio): directory dei dati Tessera (checkpoint, tile, entries)
-- `--listen` (default `:2025`): porta HTTP
-- `--private_key` (opzionale): path file chiave privata; se assente usa `LOG_PRIVATE_KEY`
-- `--anchor_file` (opzionale): abilita anchoring periodico su "blockchain fake" (file `.txt`)
-- `--anchor_interval` (default `1h`): intervallo di pubblicazione checkpoint
-- `--dev-mode` (default `false`): DEV ONLY, usa `issued_at` come `recorded_at` per seed/demo
+## Main parameters
+- `--storage_dir` (required): Tessera data directory (checkpoints, tiles, entries)
+- `--listen` (default `:2025`): HTTP port
+- `--private_key` (optional): private-key file path; if omitted, the server uses `LOG_PRIVATE_KEY`
+- `--anchor_file` (optional): enables periodic anchoring to a fake blockchain represented by a `.txt` file
+- `--anchor_interval` (default `1h`): checkpoint publication interval
+- `--dev-mode` (default `false`): DEV ONLY, uses `issued_at` as `recorded_at` for seed/demo data
 
-## Anchoring periodico (fake blockchain)
+## Periodic anchoring (fake blockchain)
 
 ```bash
 go run . \
@@ -30,26 +30,25 @@ go run . \
   --anchor_interval="1h"
 ```
 
-Comportamento:
-- ad ogni intervallo legge il checkpoint corrente
-- pubblica solo checkpoint nuovi
-- scrive una riga testuale per record, con campi separati da spazio in questo ordine:
+Behavior:
+- reads the current checkpoint at each interval
+- publishes only new checkpoints
+- writes one text line per record, with space-separated fields in this order:
   - `published_at_utc domain_separator version tree_size root_hash_hex checkpoint_hash`
-- puoi forzare una pubblicazione immediata con `POST /anchor/force`
-- puoi leggere l'ultimo checkpoint notarizzato (fake blockchain) con `GET /anchor/latest`
+- you can force immediate publication with `POST /anchor/force`
+- you can read the latest anchored checkpoint from the fake blockchain with `GET /anchor/latest`
 
-## Endpoint proof
+## Proof endpoints
 - Inclusion proof: `GET /get-inclusion/{log_index}`
 - Consistency proof: `GET /get-consistency?from={tree_size_a}&to={tree_size_b}`
 
-## Note su indice SQLite
-- File: `notary_index.db` nella directory di esecuzione del processo (cwd).
-- È un indice applicativo, non la fonte di verità del log.
-- In startup viene verificato allineamento DB/log; mismatch blocca l'avvio.
-- Se punti a un log diverso, conviene ripartire con un DB indice coerente.
+## SQLite index notes
+- File: `notary_index.db` in the process working directory (`cwd`).
+- It is an application index, not the log source of truth.
+- At startup, DB/log alignment is checked; a mismatch blocks startup.
+- If you point the server to a different log, start with a matching index DB.
 
 ## Troubleshooting
-- Sotto carico può comparire `database is locked (SQLITE_BUSY)`. Causa nota: concorrenza scritture SQLite non ancora ottimizzata (WAL/retry/backoff).
-- Se cambi `cwd`, cambia anche il path del file `notary_index.db`.
-- Se punti il server a un log Tessera diverso mantenendo un indice vecchio, l'avvio fallisce per disallineamento.
-
+- Under load, `database is locked (SQLITE_BUSY)` may appear. Known cause: SQLite write concurrency is not optimized yet (WAL/retry/backoff).
+- If you change `cwd`, the path of `notary_index.db` changes too.
+- If you point the server to a different Tessera log while keeping an old index, startup fails because of the alignment check.

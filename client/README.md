@@ -1,20 +1,20 @@
 # Client UI (`/client`)
 
-Interfaccia web per usare e verificare il transparency log.
+Web interface for using and verifying the transparency log.
 
-## Avvio rapido
-Da `client/`:
+## Quick start
+From `client/`:
 
 ```bash
 python3 -m http.server 8080
 ```
 
-Apri:
+Open:
 - `http://localhost:8080/index.html`
 
-Prerequisito: backend server attivo su `http://localhost:2025` (default).
+Prerequisite: backend server running at `http://localhost:2025` (default).
 
-## Note operative
-- La parte di ancoraggio blockchain è in fase di sviluppo.
-- Il client non firma eventi: invia payload JSON al server.
-- Non ho ancora implementato il controllo sulle firme dei checkpoint.
+## Operational notes
+- Blockchain anchoring is still under development.
+- The client does not sign events: it sends JSON payloads to the server.
+- Checkpoint signature verification has not been implemented yet.
